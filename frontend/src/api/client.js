@@ -37,7 +37,7 @@ export const authApi = {
       headers: { "Content-Type": "application/x-www-form-urlencoded" },
     });
   },
-  signup: (name, email, password, role = "operator") =>
+  signup: (name, email, password, role = "user") =>
     client.post("/auth/signup", { name, email, password, role }),
   me: () => client.get("/auth/me"),
 };
@@ -46,6 +46,24 @@ export const trafficApi = {
   getLive: () => client.get("/traffic/live"),
   getZones: () => client.get("/traffic/zones"),
   getHistory: (zoneId) => client.get(`/traffic/history/${zoneId}`),
+};
+
+export const predictionApi = {
+  predictCongestion: (payload) => client.post("/predict/congestion", payload),
+  getReports: (limit = 20) => client.get(`/predict/reports?limit=${limit}`),
+};
+
+export const routesApi = {
+  optimize: (payload) => client.post("/routes/optimize", payload),
+  saveRoute: (payload) => client.post("/routes/saved", payload),
+  getSavedRoutes: () => client.get("/routes/saved"),
+  deleteSavedRoute: (id) => client.delete(`/routes/saved/${id}`),
+};
+
+export const incidentsApi = {
+  report: (payload) => client.post("/incidents", payload),
+  list: (activeOnly = true) => client.get(`/incidents?active_only=${activeOnly}`),
+  resolve: (id) => client.patch(`/incidents/${id}/resolve`, { is_resolved: true }),
 };
 
 export default client;

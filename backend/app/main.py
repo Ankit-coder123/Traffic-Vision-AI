@@ -2,7 +2,7 @@ from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 
 from app.database import Base, engine
-from app.routers import auth, traffic
+from app.routers import auth, traffic, prediction, routes, incidents
 
 # Creates tables in trafficvision.db if they don't already exist
 Base.metadata.create_all(bind=engine)
@@ -24,6 +24,9 @@ app.add_middleware(
 
 app.include_router(auth.router)
 app.include_router(traffic.router)
+app.include_router(prediction.router)
+app.include_router(routes.router)
+app.include_router(incidents.router)
 
 
 @app.get("/")

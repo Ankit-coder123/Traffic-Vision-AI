@@ -1,7 +1,7 @@
 import { useEffect, useState, useCallback } from "react";
 import { trafficApi } from "../api/client";
-import { useAuth } from "../context/AuthContext";
 import ZoneCard from "../components/ZoneCard";
+import NavBar from "../components/NavBar";
 
 const POLL_INTERVAL_MS = 5000;
 
@@ -10,7 +10,6 @@ export default function Dashboard() {
   const [readingsByZone, setReadingsByZone] = useState({});
   const [error, setError] = useState("");
   const [lastSync, setLastSync] = useState(null);
-  const { user, logout } = useAuth();
 
   const fetchData = useCallback(async () => {
     try {
@@ -52,33 +51,7 @@ export default function Dashboard() {
 
   return (
     <div className="min-h-screen bg-console-bg">
-      {/* Top bar */}
-      <header className="border-b border-console-border bg-console-panel">
-        <div className="max-w-6xl mx-auto px-6 py-4 flex items-center justify-between">
-          <div>
-            <h1 className="font-display font-bold text-lg text-console-text tracking-tight">
-              TrafficVision <span className="text-accent">AI</span>
-            </h1>
-            <p className="text-console-muted text-xs font-mono mt-0.5">
-              Live congestion monitoring console
-            </p>
-          </div>
-          <div className="flex items-center gap-4">
-            <div className="text-right">
-              <div className="text-console-text text-sm font-body">{user?.name}</div>
-              <div className="text-console-muted text-xs font-mono uppercase">
-                {user?.role}
-              </div>
-            </div>
-            <button
-              onClick={logout}
-              className="text-console-muted hover:text-console-text text-xs font-mono border border-console-border rounded px-3 py-1.5 hover:border-accent/50 transition-colors"
-            >
-              Sign out
-            </button>
-          </div>
-        </div>
-      </header>
+      <NavBar />
 
       <main className="max-w-6xl mx-auto px-6 py-8">
         {/* Status strip */}

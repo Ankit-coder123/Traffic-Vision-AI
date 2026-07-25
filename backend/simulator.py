@@ -24,12 +24,39 @@ ADMIN_EMAIL = "admin@trafficvision.ai"
 ADMIN_PASSWORD = "admin123"
 
 # Seed zones - realistic Indian city road names as an example
+# All zones are real locations within Bangalore, India -- scoped to a single
+# city so route optimization produces meaningful in-city distances/times,
+# and the live dashboard/heatmap reads as one coherent traffic network
+# rather than disconnected points scattered across the country.
+CITY_NAME = "Bangalore"
+
 SEED_ZONES = [
+    # Central
     {"name": "MG Road Junction", "latitude": 12.9756, "longitude": 77.6068, "road_type": "arterial"},
+    {"name": "Indiranagar 100 Feet Road", "latitude": 12.9719, "longitude": 77.6412, "road_type": "arterial"},
+    {"name": "Domlur Flyover", "latitude": 12.9611, "longitude": 77.6387, "road_type": "arterial"},
+    # East
     {"name": "Outer Ring Road - Marathahalli", "latitude": 12.9569, "longitude": 77.7011, "road_type": "highway"},
-    {"name": "Cantonment Station Road", "latitude": 25.3176, "longitude": 82.9739, "road_type": "local"},
-    {"name": "Andheri Kurla Road", "latitude": 19.1136, "longitude": 72.8697, "road_type": "arterial"},
-    {"name": "NH-44 Toll Plaza", "latitude": 28.4595, "longitude": 77.0266, "road_type": "highway"},
+    {"name": "Whitefield Main Road", "latitude": 12.9698, "longitude": 77.7500, "road_type": "arterial"},
+    {"name": "KR Puram Bridge", "latitude": 13.0027, "longitude": 77.6958, "road_type": "highway"},
+    {"name": "Bellandur Junction", "latitude": 12.9257, "longitude": 77.6784, "road_type": "arterial"},
+    {"name": "Sarjapur Road Junction", "latitude": 12.9020, "longitude": 77.6870, "road_type": "arterial"},
+    # South
+    {"name": "Silk Board Junction", "latitude": 12.9172, "longitude": 77.6228, "road_type": "highway"},
+    {"name": "Electronic City Toll", "latitude": 12.8452, "longitude": 77.6602, "road_type": "highway"},
+    {"name": "Koramangala Sony Signal", "latitude": 12.9352, "longitude": 77.6245, "road_type": "arterial"},
+    {"name": "HSR Layout Sector 7", "latitude": 12.9116, "longitude": 77.6389, "road_type": "local"},
+    {"name": "BTM Layout Junction", "latitude": 12.9166, "longitude": 77.6101, "road_type": "arterial"},
+    {"name": "Jayanagar 4th Block", "latitude": 12.9308, "longitude": 77.5838, "road_type": "local"},
+    {"name": "Banashankari Bus Stand", "latitude": 12.9250, "longitude": 77.5665, "road_type": "arterial"},
+    {"name": "Bannerghatta Road Junction", "latitude": 12.8988, "longitude": 77.5987, "road_type": "highway"},
+    # North / West
+    {"name": "Hebbal Flyover", "latitude": 13.0358, "longitude": 77.5970, "road_type": "highway"},
+    {"name": "Yeshwanthpur Junction", "latitude": 13.0284, "longitude": 77.5540, "road_type": "local"},
+    {"name": "Rajajinagar", "latitude": 12.9910, "longitude": 77.5550, "road_type": "arterial"},
+    {"name": "Peenya Industrial Area", "latitude": 13.0280, "longitude": 77.5200, "road_type": "highway"},
+    {"name": "Nagawara Junction", "latitude": 13.0428, "longitude": 77.6208, "road_type": "arterial"},
+    {"name": "Vijayanagar", "latitude": 12.9719, "longitude": 77.5330, "road_type": "local"},
 ]
 
 

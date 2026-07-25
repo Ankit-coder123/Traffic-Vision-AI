@@ -1,4 +1,4 @@
-# Architecture — Week 1 & 2 (Milestone 1)
+# Architecture — Milestones 1 & 2 (Week 1–4)
 
 ## System Overview
 
@@ -60,6 +60,39 @@ traffic_data
 
 ---
 
+## Milestone 2 additions to the schema
+
+```
+traffic_predictions
+├── id               PK
+├── zone_id           FK → traffic_zones.id (nullable)
+├── vehicle_count, avg_speed_kmph, road_occupancy_pct, weather_condition
+├── predicted_congestion  'low' | 'medium' | 'high'
+├── confidence            model's probability for the predicted class
+├── predicted_by_user_id  FK → users.id
+└── created_at             indexed -- acts as a prediction "report" trail
+
+incident_reports
+├── id               PK
+├── zone_id           FK → traffic_zones.id
+├── incident_type      accident | road_closure | construction | hazard | other
+├── severity            minor | moderate | major
+├── description
+├── reported_by_user_id  FK → users.id
+├── is_resolved            0/1 flag
+└── created_at
+
+saved_routes
+├── id               PK
+├── user_id           FK → users.id
+├── label              e.g. "Home to Office"
+├── origin_zone_id      FK → traffic_zones.id
+├── destination_zone_id FK → traffic_zones.id
+└── created_at
+```
+
+`users.role` now has three values: `admin` / `operator` / `user`, enforced via a **bootstrap-admin pattern** — only the very first account ever created (`users` table empty) can self-assign `admin` through `POST /auth/signup`; every signup after that is capped at `operator`/`user` regardless of what the request asks for. This closes a real privilege-escalation vulnerability that existed in an earlier version of the endpoint.
+
 ## Authentication Flow
 
 1. Client submits credentials to `POST /auth/login`.
@@ -78,3 +111,7 @@ JWTs are stateless by design — no server-side session store is required, which
 - **Token lifecycle**: tokens are valid for a flat 24 hours with no refresh mechanism. A production system would use short-lived access tokens paired with refresh tokens.
 - **Polling vs. real-time push**: the dashboard polls every 5 seconds rather than using WebSockets/SSE. Acceptable at current scale; would need revisiting for high-concurrency or lower-latency requirements.
 - **Single-database coupling in dev**: `DATABASE_URL` construction currently assumes PostgreSQL; the ORM abstraction means switching engines again would still only touch `database.py`.
+- **No schema migration tool**: `Base.metadata.create_all()` creates tables that don't exist but never alters existing ones. Adding a column or enum value requires a full schema drop/recreate in development. A production system would use Alembic to generate proper `ALTER TABLE` migrations instead.
+- **City-wide congestion proxy for routing**: route ETA adjustment currently uses an average of recent congestion readings across *all* zones, not congestion mapped to the specific road segments in each candidate route. A more precise version would match route geometry to nearby zones.
+- **OSRM public demo server**: used for route optimization since it requires no billing/API key, but it's not meant for production traffic (undocumented rate limits, no uptime guarantee). Self-hosting OSRM or switching to a paid provider (Google Maps, Mapbox) is the natural production upgrade — swapping providers only touches `routers/routes.py`.
+- **Prediction model trained on a synthetic Kaggle dataset**: EDA revealed the dataset's congestion labels are driven almost entirely by vehicle count, occupancy, and speed, with weather and time-of-day contributing very little (~1% feature importance each). The model correctly reflects this; validating against real-world or longer-running self-generated data is the natural next step for a more realistic accuracy figure. Full discussion in `ml/README.md` and `ml/eda/EDA_SUMMARY.md`.

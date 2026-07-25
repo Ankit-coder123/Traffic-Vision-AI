@@ -14,7 +14,16 @@ def signup(user_in: schemas.UserCreate, db: Session = Depends(get_db)):
     if existing_user:
         raise HTTPException(status_code=400, detail="Email already registered")
 
-    role = user_in.role if user_in.role in ("admin", "operator") else "operator"
+    # Security: 'admin' is only self-assignable for the very first account
+    # ever created (a standard "bootstrap admin" pattern) -- this is how
+    # simulator.py creates its seed admin account on first run. Every
+    # signup after that is restricted to 'operator' or 'user', regardless
+    # of what role is requested, so the public can never mint new admins.
+    is_first_user = db.query(models.User).count() == 0
+    if is_first_user and user_in.role == "admin":
+        role = "admin"
+    else:
+        role = user_in.role if user_in.role in ("operator", "user") else "user"
 
     new_user = models.User(
         name=user_in.name,

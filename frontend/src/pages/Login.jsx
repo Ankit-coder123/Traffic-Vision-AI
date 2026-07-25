@@ -1,5 +1,5 @@
 import { useState } from "react";
-import { useNavigate } from "react-router-dom";
+import { useNavigate, Link } from "react-router-dom";
 import { useAuth } from "../context/AuthContext";
 
 export default function Login() {
@@ -43,7 +43,7 @@ export default function Login() {
             TrafficVision <span className="text-accent">AI</span>
           </h1>
           <p className="text-console-muted text-sm mt-1 font-body">
-            Operator console access
+            Operator console access &middot; Bangalore
           </p>
         </div>
 
@@ -95,7 +95,10 @@ export default function Login() {
         </form>
 
         <p className="text-center text-console-muted text-xs mt-5 font-body">
-          Default admin account is created by <code className="text-accent/80">simulator.py</code> on first run.
+          New here?{" "}
+          <Link to="/signup" className="text-accent hover:underline">
+            Create an account
+          </Link>
         </p>
       </div>
     </div>

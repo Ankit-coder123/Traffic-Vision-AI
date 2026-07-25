@@ -28,13 +28,20 @@ export function AuthProvider({ children }) {
     return me.data;
   };
 
+  const signup = async (name, email, password, role = "user") => {
+    // Public signup only ever sends 'operator' or 'user' -- 'admin' isn't
+    // offered as a choice in the UI (see Signup.jsx).
+    await authApi.signup(name, email, password, role);
+    return login(email, password);
+  };
+
   const logout = () => {
     localStorage.removeItem("tv_token");
     setUser(null);
   };
 
   return (
-    <AuthContext.Provider value={{ user, loading, login, logout }}>
+    <AuthContext.Provider value={{ user, loading, login, signup, logout }}>
       {children}
     </AuthContext.Provider>
   );

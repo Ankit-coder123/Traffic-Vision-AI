@@ -10,10 +10,9 @@ from sqlalchemy.orm import Session
 from app.database import get_db
 from app import models
 
-# --- Config (in a real deployment, load SECRET_KEY from an env variable, never hardcode) ---
 SECRET_KEY = "CHANGE_THIS_TO_A_RANDOM_SECRET_IN_PRODUCTION"
 ALGORITHM = "HS256"
-ACCESS_TOKEN_EXPIRE_MINUTES = 60 * 24  # 1 day
+ACCESS_TOKEN_EXPIRE_MINUTES = 60 * 24
 
 pwd_context = CryptContext(schemes=["bcrypt"], deprecated="auto")
 oauth2_scheme = OAuth2PasswordBearer(tokenUrl="auth/login")
@@ -55,10 +54,18 @@ def get_current_user(token: str = Depends(oauth2_scheme), db: Session = Depends(
 
 
 def require_admin(current_user: models.User = Depends(get_current_user)) -> models.User:
-    """Use this as a dependency on routes that only admins should access."""
     if current_user.role != models.UserRole.admin:
         raise HTTPException(
             status_code=status.HTTP_403_FORBIDDEN,
             detail="Admin privileges required",
+        )
+    return current_user
+
+
+def require_operator_or_admin(current_user: models.User = Depends(get_current_user)) -> models.User:
+    if current_user.role not in (models.UserRole.admin, models.UserRole.operator):
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail="Operator or admin privileges required",
         )
     return current_user
