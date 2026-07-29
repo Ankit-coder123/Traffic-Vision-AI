@@ -5,7 +5,7 @@ from fastapi import APIRouter, Depends, HTTPException
 from sqlalchemy import func
 from sqlalchemy.orm import Session
 
-from app import models, schemas, auth
+from app import models, schemas, security
 from app.database import get_db
 
 router = APIRouter(prefix="/routes", tags=["Route Optimization"])
@@ -72,7 +72,7 @@ def _current_congestion_level(db: Session) -> str:
 def optimize_route(
     payload: schemas.RouteRequest,
     db: Session = Depends(get_db),
-    current_user: models.User = Depends(auth.get_current_user),
+    current_user: models.User = Depends(security.get_current_user),
 ):
     """
     Fetches alternate driving routes between an origin and destination via
@@ -147,7 +147,7 @@ def optimize_route(
 def save_route(
     payload: schemas.SavedRouteCreate,
     db: Session = Depends(get_db),
-    current_user: models.User = Depends(auth.get_current_user),
+    current_user: models.User = Depends(security.get_current_user),
 ):
     origin = db.query(models.TrafficZone).filter(models.TrafficZone.id == payload.origin_zone_id).first()
     destination = db.query(models.TrafficZone).filter(models.TrafficZone.id == payload.destination_zone_id).first()
@@ -178,7 +178,7 @@ def save_route(
 @router.get("/saved", response_model=list[schemas.SavedRouteOut])
 def list_saved_routes(
     db: Session = Depends(get_db),
-    current_user: models.User = Depends(auth.get_current_user),
+    current_user: models.User = Depends(security.get_current_user),
 ):
     """Only returns the current user's own saved routes -- not anyone else's."""
     saved_routes = (
@@ -207,7 +207,7 @@ def list_saved_routes(
 def delete_saved_route(
     saved_route_id: int,
     db: Session = Depends(get_db),
-    current_user: models.User = Depends(auth.get_current_user),
+    current_user: models.User = Depends(security.get_current_user),
 ):
     saved = (
         db.query(models.SavedRoute)

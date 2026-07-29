@@ -6,7 +6,7 @@ import pandas as pd
 from fastapi import APIRouter, Depends, HTTPException
 from sqlalchemy.orm import Session
 
-from app import models, schemas, auth
+from app import models, schemas, security
 from app.database import get_db
 
 router = APIRouter(prefix="/predict", tags=["Congestion Prediction"])
@@ -61,7 +61,7 @@ def _build_feature_row(payload: schemas.CongestionPredictionRequest) -> pd.DataF
 def predict_congestion(
     payload: schemas.CongestionPredictionRequest,
     db: Session = Depends(get_db),
-    current_user: models.User = Depends(auth.get_current_user),
+    current_user: models.User = Depends(security.get_current_user),
 ):
     """
     Predicts congestion level (low/medium/high) from live traffic metrics
@@ -82,7 +82,8 @@ def predict_congestion(
 
     # Log the prediction for the "traffic prediction reports" requirement
     record = models.TrafficPrediction(
-        zone_id=payload.zone_id,
+        origin_zone_id=payload.origin_zone_id,
+        destination_zone_id=payload.destination_zone_id,
         vehicle_count=payload.vehicle_count,
         avg_speed_kmph=payload.avg_speed_kmph,
         road_occupancy_pct=payload.road_occupancy_pct,
@@ -98,6 +99,8 @@ def predict_congestion(
         predicted_congestion=predicted_label,
         confidence=confidence,
         probabilities=prob_dict,
+        origin_zone_id=payload.origin_zone_id,
+        destination_zone_id=payload.destination_zone_id,
     )
 
 
@@ -105,7 +108,7 @@ def predict_congestion(
 def get_prediction_reports(
     limit: int = 50,
     db: Session = Depends(get_db),
-    current_user: models.User = Depends(auth.get_current_user),
+    current_user: models.User = Depends(security.get_current_user),
 ):
     """Returns the most recent prediction reports -- satisfies the 'generate
     traffic prediction reports' requirement from the Week 3&4 milestone."""

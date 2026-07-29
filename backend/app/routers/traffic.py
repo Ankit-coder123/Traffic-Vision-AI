@@ -3,7 +3,7 @@ from typing import List
 from fastapi import APIRouter, Depends
 from sqlalchemy.orm import Session
 
-from app import models, schemas, auth
+from app import models, schemas, security
 from app.database import get_db
 
 router = APIRouter(prefix="/traffic", tags=["Traffic Monitoring"])
@@ -13,7 +13,7 @@ router = APIRouter(prefix="/traffic", tags=["Traffic Monitoring"])
 def create_zone(
     zone_in: schemas.TrafficZoneCreate,
     db: Session = Depends(get_db),
-    current_user: models.User = Depends(auth.require_admin),  # only admins add zones
+    current_user: models.User = Depends(security.require_admin),  # only admins add zones
 ):
     zone = models.TrafficZone(**zone_in.model_dump())
     db.add(zone)
@@ -23,7 +23,7 @@ def create_zone(
 
 
 @router.get("/zones", response_model=List[schemas.TrafficZoneOut])
-def list_zones(db: Session = Depends(get_db), current_user: models.User = Depends(auth.get_current_user)):
+def list_zones(db: Session = Depends(get_db), current_user: models.User = Depends(security.get_current_user)):
     return db.query(models.TrafficZone).all()
 
 
@@ -31,7 +31,7 @@ def list_zones(db: Session = Depends(get_db), current_user: models.User = Depend
 def ingest_traffic_data(
     data_in: schemas.TrafficDataCreate,
     db: Session = Depends(get_db),
-    current_user: models.User = Depends(auth.get_current_user),
+    current_user: models.User = Depends(security.get_current_user),
 ):
     """
     Called by the simulator (or, in production, real sensor gateways) to
@@ -45,7 +45,7 @@ def ingest_traffic_data(
 
 
 @router.get("/live", response_model=List[schemas.TrafficDataOut])
-def get_live_traffic(db: Session = Depends(get_db), current_user: models.User = Depends(auth.get_current_user)):
+def get_live_traffic(db: Session = Depends(get_db), current_user: models.User = Depends(security.get_current_user)):
     """
     Returns the MOST RECENT traffic reading per zone — this is what the
     live dashboard will poll every few seconds.
@@ -65,7 +65,7 @@ def get_live_traffic(db: Session = Depends(get_db), current_user: models.User = 
 
 
 @router.get("/history/{zone_id}", response_model=List[schemas.TrafficDataOut])
-def get_zone_history(zone_id: int, db: Session = Depends(get_db), current_user: models.User = Depends(auth.get_current_user)):
+def get_zone_history(zone_id: int, db: Session = Depends(get_db), current_user: models.User = Depends(security.get_current_user)):
     return (
         db.query(models.TrafficData)
         .filter(models.TrafficData.zone_id == zone_id)

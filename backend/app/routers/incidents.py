@@ -3,7 +3,7 @@ from typing import List
 from fastapi import APIRouter, Depends, HTTPException
 from sqlalchemy.orm import Session
 
-from app import models, schemas, auth
+from app import models, schemas, security
 from app.database import get_db
 
 router = APIRouter(prefix="/incidents", tags=["Incident Reports"])
@@ -27,7 +27,7 @@ def _to_out(incident: models.IncidentReport) -> schemas.IncidentReportOut:
 def report_incident(
     payload: schemas.IncidentReportCreate,
     db: Session = Depends(get_db),
-    current_user: models.User = Depends(auth.require_operator_or_admin),
+    current_user: models.User = Depends(security.require_operator_or_admin),
 ):
     """Operators/admins only -- regular public 'user' accounts cannot report
     incidents, only view them (see GET below)."""
@@ -58,7 +58,7 @@ def report_incident(
 def list_incidents(
     active_only: bool = True,
     db: Session = Depends(get_db),
-    current_user: models.User = Depends(auth.get_current_user),
+    current_user: models.User = Depends(security.get_current_user),
 ):
     """Any authenticated role can VIEW incidents -- reporting is restricted,
     viewing is not, since regular users benefit from seeing active alerts."""
@@ -74,7 +74,7 @@ def resolve_incident(
     incident_id: int,
     payload: schemas.IncidentResolveRequest,
     db: Session = Depends(get_db),
-    current_user: models.User = Depends(auth.require_operator_or_admin),
+    current_user: models.User = Depends(security.require_operator_or_admin),
 ):
     incident = db.query(models.IncidentReport).filter(models.IncidentReport.id == incident_id).first()
     if not incident:

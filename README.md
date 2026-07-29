@@ -28,11 +28,11 @@ TrafficVision-AI/
 │   │   ├── database.py             # PostgreSQL connection (env-based config)
 │   │   ├── models.py               # SQLAlchemy ORM models
 │   │   ├── schemas.py              # Pydantic request/response schemas
-│   │   ├── auth.py                 # ⚠️ JWT + password utilities — see "Two auth.py files" below
+│   │   ├── security.py             # JWT + password utilities (see note below on why this isn't named auth.py)
 │   │   ├── congestion_model.joblib # Trained RandomForest model
 │   │   ├── target_encoder.joblib
 │   │   └── routers/
-│   │       ├── auth.py             # ⚠️ signup/login HTTP endpoints — NOT the same file as above
+│   │       ├── auth.py             # signup/login HTTP endpoints
 │   │       ├── traffic.py
 │   │       ├── prediction.py
 │   │       ├── routes.py
@@ -53,27 +53,16 @@ TrafficVision-AI/
 
 ---
 
-## ⚠️ Two `auth.py` files — read this before editing either one
+## A note on `security.py` (formerly a duplicate `auth.py`)
 
-This project has **two different files that share the same name**, and mixing them up has been the single most common source of bugs during development:
-
-| File | Contains | Starts with |
-|---|---|---|
-| `backend/app/auth.py` | Password hashing, JWT creation/validation, RBAC dependencies (`hash_password`, `get_current_user`, `require_admin`, `require_operator_or_admin`) | `from datetime import datetime, timedelta` |
-| `backend/app/routers/auth.py` | The actual HTTP endpoints (`/auth/signup`, `/auth/login`, `/auth/me`) | `from fastapi import APIRouter` |
-
-**Before editing or pasting into either file, check which one is open** by looking for `APIRouter` — if you see it in `app/auth.py`, the wrong content has landed there and the server will fail on startup with:
+Earlier in development, both the JWT/password utilities file and the router file were named `auth.py` (one at `backend/app/auth.py`, the other at `backend/app/routers/auth.py`). Despite being two genuinely different files, this identical naming repeatedly led to their contents getting mixed up during editing — the same bug recurring across many sessions:
 ```
 AttributeError: module 'app.auth' has no attribute 'get_current_user'
 ```
-Fix: replace `app/auth.py`'s content with the correct version from the **Reference: `app/auth.py`** section near the bottom of this document, verify with:
-```powershell
-Select-String -Path app\auth.py -Pattern "APIRouter"
-```
-This must print **nothing**. Then confirm both required functions exist:
-```powershell
-Select-String -Path app\auth.py -Pattern "def get_current_user|def require_operator_or_admin"
-```
+
+**Permanent fix**: `backend/app/auth.py` was renamed to `backend/app/security.py`, and every router (`auth.py`, `traffic.py`, `prediction.py`, `routes.py`, `incidents.py`) was updated to `from app import security` and call `security.hash_password(...)`, `security.get_current_user`, etc. There is now only **one** file named `auth.py` in the whole project (the router), so this entire class of mistake is no longer possible.
+
+If you're working from an older clone, delete `app/auth.py` and add `app/security.py` with the content in the **Reference** section near the bottom of this document, then update the 5 router files' imports the same way.
 
 ---
 
@@ -265,7 +254,7 @@ Visit `http://localhost:5173`. Log in as admin, or sign up as a new Public User 
 
 | Symptom | Cause | Fix |
 |---|---|---|
-| `AttributeError: module 'app.auth' has no attribute 'get_current_user'` | Wrong content in `app/auth.py` — see the warning section above | Restore from the Reference section below, verify with `Select-String` |
+| `AttributeError: module 'app.auth' has no attribute 'get_current_user'` | Working from an old clone where `app/auth.py` and `app/routers/auth.py` still share a name | Pull the latest code — this was permanently fixed by renaming `app/auth.py` to `app/security.py` (see note near the top of this document) |
 | `password authentication failed for user "postgres"` | `.env` password doesn't match your actual PostgreSQL password | Confirm with `psql` directly, update `.env` to match |
 | `could not translate host name "X@localhost"` | Special character in password wasn't URL-encoded | Already handled by `quote_plus` in `database.py` |
 | `500` on `/auth/signup` | `bcrypt`/`passlib` version mismatch | `pip install "bcrypt==4.0.1" --force-reinstall` |
@@ -276,7 +265,7 @@ Visit `http://localhost:5173`. Log in as admin, or sign up as a new Public User 
 
 ---
 
-## Reference: `app/auth.py` (correct, complete content)
+## Reference: `app/security.py` (correct, complete content)
 
 If this file ever gets corrupted or mixed up with the router file, replace its entire contents with exactly this:
 

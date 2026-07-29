@@ -78,7 +78,8 @@ class TrafficDataCreate(BaseModel):
 # ---------- Congestion Prediction ----------
 
 class CongestionPredictionRequest(BaseModel):
-    zone_id: Optional[int] = None
+    origin_zone_id: Optional[int] = None
+    destination_zone_id: Optional[int] = None
     vehicle_count: int
     avg_speed_kmph: float
     road_occupancy_pct: float
@@ -91,11 +92,14 @@ class CongestionPredictionResponse(BaseModel):
     predicted_congestion: str
     confidence: float
     probabilities: dict            # e.g. {"low": 0.1, "medium": 0.7, "high": 0.2}
+    origin_zone_id: Optional[int] = None
+    destination_zone_id: Optional[int] = None
 
 
 class TrafficPredictionOut(BaseModel):
     id: int
-    zone_id: Optional[int]
+    origin_zone_id: Optional[int]
+    destination_zone_id: Optional[int]
     vehicle_count: int
     avg_speed_kmph: float
     road_occupancy_pct: float

@@ -1,4 +1,7 @@
 import { useEffect, useState } from "react";
+import { useNavigate, useLocation } from "react-router-dom";
+import jsPDF from "jspdf";
+import autoTable from "jspdf-autotable";
 import { predictionApi, trafficApi } from "../api/client";
 import NavBar from "../components/NavBar";
 
@@ -18,18 +21,14 @@ function formatHour(h) {
 
 const HOUR_OPTIONS = Array.from({ length: 24 }, (_, h) => h);
 
-const SCENARIO_PRESETS = [
-  { label: "Free Flow", vehicle_count: 40, avg_speed_kmph: 70, road_occupancy_pct: 15, weather_condition: "Clear", hour: 2, is_weekend: false },
-  { label: "Moderate", vehicle_count: 150, avg_speed_kmph: 35, road_occupancy_pct: 50, weather_condition: "Clear", hour: 13, is_weekend: false },
-  { label: "Rush Hour", vehicle_count: 260, avg_speed_kmph: 15, road_occupancy_pct: 85, weather_condition: "Clear", hour: 18, is_weekend: false },
-  { label: "Storm Gridlock", vehicle_count: 280, avg_speed_kmph: 8, road_occupancy_pct: 95, weather_condition: "Rain", hour: 8, is_weekend: false },
-];
-
 export default function Prediction() {
+  const navigate = useNavigate();
+  const location = useLocation();
   const [zones, setZones] = useState([]);
   const now = new Date();
   const [form, setForm] = useState({
-    zone_id: "",
+    origin_zone_id: location.state?.originId ? String(location.state.originId) : "",
+    destination_zone_id: location.state?.destinationId ? String(location.state.destinationId) : "",
     vehicle_count: 150,
     avg_speed_kmph: 35,
     road_occupancy_pct: 50,
@@ -56,7 +55,8 @@ export default function Prediction() {
   };
 
   const handleChange = (field) => (e) => {
-    const isStringField = field === "zone_id" || field === "weather_condition";
+    const isStringField =
+      field === "origin_zone_id" || field === "destination_zone_id" || field === "weather_condition";
     const value = isStringField ? e.target.value : Number(e.target.value);
     setForm((prev) => ({ ...prev, [field]: value }));
   };
@@ -74,25 +74,25 @@ export default function Prediction() {
     }));
   };
 
-  const applyPreset = (preset) => {
-    setForm((prev) => ({
-      ...prev,
-      vehicle_count: preset.vehicle_count,
-      avg_speed_kmph: preset.avg_speed_kmph,
-      road_occupancy_pct: preset.road_occupancy_pct,
-      weather_condition: preset.weather_condition,
-      hour: preset.hour,
-      is_weekend: preset.is_weekend,
-    }));
-  };
-
   const handleSubmit = async (e) => {
     e.preventDefault();
     setError("");
+
+    if (!form.origin_zone_id || !form.destination_zone_id) {
+      setError("Select both an origin and a destination zone.");
+      return;
+    }
+    if (form.origin_zone_id === form.destination_zone_id) {
+      setError("Origin and destination must be different zones.");
+      return;
+    }
+
     setLoading(true);
     setResult(null);
     try {
       const payload = {
+        origin_zone_id: Number(form.origin_zone_id),
+        destination_zone_id: Number(form.destination_zone_id),
         vehicle_count: form.vehicle_count,
         avg_speed_kmph: form.avg_speed_kmph,
         road_occupancy_pct: form.road_occupancy_pct,
@@ -100,7 +100,6 @@ export default function Prediction() {
         hour: form.hour,
         is_weekend: form.is_weekend,
       };
-      if (form.zone_id) payload.zone_id = Number(form.zone_id);
 
       const res = await predictionApi.predictCongestion(payload);
       setResult(res.data);
@@ -117,6 +116,91 @@ export default function Prediction() {
     }
   };
 
+  const handleViewOptimizedRoute = () => {
+    navigate("/routes", {
+      state: {
+        originId: form.origin_zone_id,
+        destinationId: form.destination_zone_id,
+        autoSearch: true,
+        predictedCongestion: result?.predicted_congestion,
+      },
+    });
+  };
+
+  const zoneName = (id) => zones.find((z) => String(z.id) === String(id))?.name || "";
+
+  const handleDownloadPdf = () => {
+    const doc = new jsPDF();
+
+    doc.setFontSize(16);
+    doc.text("TrafficVision AI — Congestion Prediction Report", 14, 18);
+    doc.setFontSize(10);
+    doc.setTextColor(100);
+    doc.text(`Bangalore · Generated ${new Date().toLocaleString()}`, 14, 25);
+
+    let startY = 32;
+
+    // If there's a currently-viewed prediction result, lead with it as a summary block
+    if (result) {
+      doc.setFontSize(12);
+      doc.setTextColor(0);
+      doc.text("Latest Prediction", 14, startY + 6);
+
+      autoTable(doc, {
+        startY: startY + 10,
+        head: [["Route", "Predicted Congestion", "Confidence", "Vehicles", "Speed", "Occupancy", "Weather", "Time"]],
+        body: [[
+          `${zoneName(form.origin_zone_id) || "—"} -> ${zoneName(form.destination_zone_id) || "—"}`,
+          result.predicted_congestion.toUpperCase(),
+          `${(result.confidence * 100).toFixed(1)}%`,
+          form.vehicle_count,
+          `${form.avg_speed_kmph} km/h`,
+          `${form.road_occupancy_pct}%`,
+          form.weather_condition,
+          `${formatHour(form.hour)} (${form.is_weekend ? "Weekend" : "Weekday"})`,
+        ]],
+        theme: "grid",
+        headStyles: { fillColor: [34, 211, 238] },
+        styles: { fontSize: 8 },
+      });
+
+      startY = doc.lastAutoTable.finalY + 12;
+    }
+
+    doc.setFontSize(12);
+    doc.setTextColor(0);
+    doc.text("Recent Prediction History", 14, startY);
+
+    if (reports.length === 0) {
+      doc.setFontSize(10);
+      doc.setTextColor(120);
+      doc.text("No predictions logged yet.", 14, startY + 8);
+    } else {
+      autoTable(doc, {
+        startY: startY + 4,
+        head: [["Time", "Route", "Vehicles", "Speed", "Occupancy", "Weather", "Prediction", "Confidence"]],
+        body: reports.map((r) => [
+          new Date(r.created_at).toLocaleString(),
+          r.origin_zone_id && r.destination_zone_id
+            ? `${zoneName(r.origin_zone_id) || "?"} -> ${zoneName(r.destination_zone_id) || "?"}`
+            : "—",
+          r.vehicle_count,
+          `${r.avg_speed_kmph} km/h`,
+          `${r.road_occupancy_pct}%`,
+          r.weather_condition,
+          r.predicted_congestion.toUpperCase(),
+          `${(r.confidence * 100).toFixed(1)}%`,
+        ]),
+        theme: "striped",
+        headStyles: { fillColor: [34, 211, 238] },
+        styles: { fontSize: 8 },
+      });
+    }
+
+    const filename = `trafficvision-prediction-report-${new Date().toISOString().slice(0, 10)}.pdf`;
+    doc.save(filename);
+  };
+
   return (
     <div className="min-h-screen bg-console-bg">
       <NavBar />
@@ -126,7 +210,7 @@ export default function Prediction() {
           Congestion Prediction
         </h2>
         <p className="text-console-muted text-sm font-mono mt-1">
-          RandomForest model &middot; trained on vehicle count, speed, occupancy &amp; time features
+          Predict congestion for a specific route, then jump straight to optimized alternatives
         </p>
       </div>
 
@@ -137,44 +221,50 @@ export default function Prediction() {
           className="bg-console-panel border border-console-border rounded-lg p-6"
         >
           <h3 className="font-display font-semibold text-console-text text-sm mb-4 uppercase tracking-wide">
-            Traffic Conditions
+            Route
           </h3>
 
-          <div className="mb-5">
-            <span className="block text-xs font-mono text-console-muted uppercase tracking-wide mb-2">
-              Quick Scenarios
-            </span>
-            <div className="grid grid-cols-2 gap-2">
-              {SCENARIO_PRESETS.map((preset) => (
-                <button
-                  key={preset.label}
-                  type="button"
-                  onClick={() => applyPreset(preset)}
-                  className="px-3 py-2 rounded border border-console-border bg-console-bg hover:border-accent/50 hover:bg-accent/5 text-console-text text-xs font-mono uppercase tracking-wide transition-colors"
-                >
-                  {preset.label}
-                </button>
-              ))}
-            </div>
+          <div className="grid grid-cols-2 gap-3 mb-5">
+            <label className="block">
+              <span className="block text-xs font-mono text-console-muted uppercase tracking-wide mb-1.5">
+                From
+              </span>
+              <select
+                value={form.origin_zone_id}
+                onChange={handleChange("origin_zone_id")}
+                className="w-full bg-console-bg border border-console-border rounded px-3 py-2.5 text-console-text focus:outline-none focus:ring-2 focus:ring-accent/50 focus:border-accent font-body text-sm"
+              >
+                <option value="">Select origin</option>
+                {zones.map((z) => (
+                  <option key={z.id} value={z.id}>
+                    {z.name}
+                  </option>
+                ))}
+              </select>
+            </label>
+
+            <label className="block">
+              <span className="block text-xs font-mono text-console-muted uppercase tracking-wide mb-1.5">
+                To
+              </span>
+              <select
+                value={form.destination_zone_id}
+                onChange={handleChange("destination_zone_id")}
+                className="w-full bg-console-bg border border-console-border rounded px-3 py-2.5 text-console-text focus:outline-none focus:ring-2 focus:ring-accent/50 focus:border-accent font-body text-sm"
+              >
+                <option value="">Select destination</option>
+                {zones.map((z) => (
+                  <option key={z.id} value={z.id}>
+                    {z.name}
+                  </option>
+                ))}
+              </select>
+            </label>
           </div>
 
-          <label className="block mb-4">
-            <span className="block text-xs font-mono text-console-muted uppercase tracking-wide mb-1.5">
-              Zone (optional)
-            </span>
-            <select
-              value={form.zone_id}
-              onChange={handleChange("zone_id")}
-              className="w-full bg-console-bg border border-console-border rounded px-3 py-2.5 text-console-text focus:outline-none focus:ring-2 focus:ring-accent/50 focus:border-accent font-body text-sm"
-            >
-              <option value="">— Not tied to a zone —</option>
-              {zones.map((z) => (
-                <option key={z.id} value={z.id}>
-                  {z.name}
-                </option>
-              ))}
-            </select>
-          </label>
+          <h3 className="font-display font-semibold text-console-text text-sm mb-4 uppercase tracking-wide">
+            Traffic Conditions
+          </h3>
 
           <label className="block mb-4">
             <span className="block text-xs font-mono text-console-muted uppercase tracking-wide mb-1.5">
@@ -313,14 +403,20 @@ export default function Prediction() {
 
           {!result && (
             <div className="text-console-muted text-sm font-body py-12 text-center">
-              Fill in traffic conditions and click Predict to see the model's output.
+              Select a route and traffic conditions, then click Predict to see the model's output.
             </div>
           )}
 
           {result && (
             <div>
+              <div className="text-console-text text-sm font-body mb-3 pb-3 border-b border-console-border">
+                <span className="font-medium">{zoneName(form.origin_zone_id)}</span>
+                <span className="text-console-muted mx-2">&rarr;</span>
+                <span className="font-medium">{zoneName(form.destination_zone_id)}</span>
+              </div>
+
               {resultContext && (
-                <div className="text-console-muted text-xs font-mono mb-3 pb-3 border-b border-console-border">
+                <div className="text-console-muted text-xs font-mono mb-3">
                   Forecast for {formatHour(resultContext.hour)} &middot;{" "}
                   {resultContext.is_weekend ? "Weekend" : "Weekday"}
                 </div>
@@ -339,7 +435,7 @@ export default function Prediction() {
                 Confidence: {(result.confidence * 100).toFixed(1)}%
               </div>
 
-              <div className="space-y-3">
+              <div className="space-y-3 mb-5">
                 {Object.entries(result.probabilities)
                   .sort((a, b) => b[1] - a[1])
                   .map(([level, prob]) => (
@@ -357,6 +453,15 @@ export default function Prediction() {
                     </div>
                   ))}
               </div>
+
+              <button
+                type="button"
+                onClick={handleViewOptimizedRoute}
+                className="w-full bg-accent/10 border border-accent/40 text-accent font-display font-semibold rounded py-2.5 text-sm tracking-wide hover:bg-accent/20 transition-colors flex items-center justify-center gap-2"
+              >
+                View Optimized Route
+                <span aria-hidden="true">&rarr;</span>
+              </button>
             </div>
           )}
         </div>
@@ -364,9 +469,19 @@ export default function Prediction() {
 
       {/* Recent reports */}
       <div className="mt-6 bg-console-panel border border-console-border rounded-lg p-6">
-        <h3 className="font-display font-semibold text-console-text text-sm mb-4 uppercase tracking-wide">
-          Recent Prediction Reports
-        </h3>
+        <div className="flex items-center justify-between mb-4">
+          <h3 className="font-display font-semibold text-console-text text-sm uppercase tracking-wide">
+            Recent Prediction Reports
+          </h3>
+          <button
+            type="button"
+            onClick={handleDownloadPdf}
+            className="flex items-center gap-1.5 px-3 py-1.5 rounded border border-accent/40 text-accent text-xs font-mono uppercase tracking-wide hover:bg-accent/10 transition-colors"
+          >
+            <span aria-hidden="true">&#8681;</span>
+            Download PDF
+          </button>
+        </div>
 
         {reports.length === 0 ? (
           <p className="text-console-muted text-sm font-body">No predictions logged yet.</p>
@@ -376,6 +491,7 @@ export default function Prediction() {
               <thead>
                 <tr className="text-left text-console-muted text-xs font-mono uppercase tracking-wide border-b border-console-border">
                   <th className="pb-2 pr-4">Time</th>
+                  <th className="pb-2 pr-4">Route</th>
                   <th className="pb-2 pr-4">Vehicles</th>
                   <th className="pb-2 pr-4">Speed</th>
                   <th className="pb-2 pr-4">Occupancy</th>
@@ -388,6 +504,11 @@ export default function Prediction() {
                   <tr key={r.id} className="border-b border-console-border/50">
                     <td className="py-2 pr-4 text-console-muted">
                       {new Date(r.created_at).toLocaleTimeString()}
+                    </td>
+                    <td className="py-2 pr-4 text-console-muted">
+                      {r.origin_zone_id && r.destination_zone_id
+                        ? `${zoneName(r.origin_zone_id) || "?"} → ${zoneName(r.destination_zone_id) || "?"}`
+                        : "—"}
                     </td>
                     <td className="py-2 pr-4">{r.vehicle_count}</td>
                     <td className="py-2 pr-4">{r.avg_speed_kmph} km/h</td>

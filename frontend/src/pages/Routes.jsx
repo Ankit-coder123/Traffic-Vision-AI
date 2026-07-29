@@ -1,4 +1,5 @@
 import { useEffect, useState } from "react";
+import { useLocation, useNavigate } from "react-router-dom";
 import { MapContainer, TileLayer, Polyline, Marker, Popup, useMap } from "react-leaflet";
 import L from "leaflet";
 import "leaflet/dist/leaflet.css";
@@ -71,13 +72,18 @@ function RouteComparisonSummary({ routes }) {
 }
 
 export default function Routes() {
+  const location = useLocation();
+  const navigate = useNavigate();
   const [zones, setZones] = useState([]);
-  const [originId, setOriginId] = useState("");
-  const [destinationId, setDestinationId] = useState("");
+  const [originId, setOriginId] = useState(location.state?.originId ? String(location.state.originId) : "");
+  const [destinationId, setDestinationId] = useState(
+    location.state?.destinationId ? String(location.state.destinationId) : ""
+  );
   const [result, setResult] = useState(null);
   const [selectedIdx, setSelectedIdx] = useState(0);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState("");
+  const [cameFromPrediction] = useState(Boolean(location.state?.autoSearch));
 
   const [savedRoutes, setSavedRoutes] = useState([]);
   const [saveLabel, setSaveLabel] = useState("");
@@ -87,6 +93,13 @@ export default function Routes() {
   useEffect(() => {
     trafficApi.getZones().then((res) => setZones(res.data)).catch(() => {});
     loadSavedRoutes();
+
+    // Arrived here from the Prediction page with a route already chosen --
+    // run the search automatically instead of making the person click again.
+    if (location.state?.autoSearch && location.state?.originId && location.state?.destinationId) {
+      findRoutes(location.state.originId, location.state.destinationId);
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
   const loadSavedRoutes = () => {
@@ -191,6 +204,26 @@ export default function Routes() {
             {result && " — click a route below to view it on the map"}
           </p>
         </div>
+
+        {cameFromPrediction && location.state?.predictedCongestion && (
+          <div className="mb-6 px-4 py-3 rounded-lg border border-accent/30 bg-accent/5 flex items-center gap-2 text-sm font-body">
+            <span className="text-accent font-mono uppercase tracking-wide text-xs">
+              Predicted
+            </span>
+            <span
+              className={
+                location.state.predictedCongestion === "high"
+                  ? "text-signal-high font-semibold uppercase"
+                  : location.state.predictedCongestion === "medium"
+                  ? "text-signal-medium font-semibold uppercase"
+                  : "text-signal-low font-semibold uppercase"
+              }
+            >
+              {location.state.predictedCongestion} congestion
+            </span>
+            <span className="text-console-muted">for this route — here are your optimized alternatives</span>
+          </div>
+        )}
 
         <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
           {/* Controls + route list */}
@@ -317,9 +350,22 @@ export default function Routes() {
 
             {result && (
               <div className="bg-console-panel border border-console-border rounded-lg p-6">
-                <h3 className="font-display font-semibold text-console-text text-sm mb-1 uppercase tracking-wide">
-                  Route Options
-                </h3>
+                <div className="flex items-center justify-between mb-1">
+                  <h3 className="font-display font-semibold text-console-text text-sm uppercase tracking-wide">
+                    Route Options
+                  </h3>
+                  <button
+                    type="button"
+                    onClick={() =>
+                      navigate("/prediction", {
+                        state: { originId, destinationId },
+                      })
+                    }
+                    className="text-[10px] font-mono text-accent hover:underline uppercase tracking-wide shrink-0"
+                  >
+                    Predict Congestion &rarr;
+                  </button>
+                </div>
                 <p className="text-console-muted text-xs font-mono mb-4">
                   City-wide congestion: {result.congestion_level_used}
                 </p>

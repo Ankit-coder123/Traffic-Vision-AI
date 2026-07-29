@@ -75,7 +75,8 @@ class TrafficPrediction(Base):
     __tablename__ = "traffic_predictions"
 
     id = Column(Integer, primary_key=True, index=True)
-    zone_id = Column(Integer, ForeignKey("traffic_zones.id"), nullable=True)
+    origin_zone_id = Column(Integer, ForeignKey("traffic_zones.id"), nullable=True)
+    destination_zone_id = Column(Integer, ForeignKey("traffic_zones.id"), nullable=True)
     vehicle_count = Column(Integer, nullable=False)
     avg_speed_kmph = Column(Float, nullable=False)
     road_occupancy_pct = Column(Float, nullable=False)
