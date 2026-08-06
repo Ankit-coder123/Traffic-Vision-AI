@@ -348,6 +348,24 @@ export default function Routes() {
               </div>
             )}
 
+            {result && result.incident_warnings && result.incident_warnings.length > 0 && (
+              <div className="bg-signal-severe/10 border border-signal-severe/40 rounded-lg p-4">
+                <div className="flex items-center gap-1.5 mb-2">
+                  <span className="text-signal-severe">&#9888;</span>
+                  <h4 className="text-signal-severe text-xs font-mono uppercase tracking-wide font-semibold">
+                    Active Incident Alert
+                  </h4>
+                </div>
+                <ul className="space-y-1.5">
+                  {result.incident_warnings.map((warning, idx) => (
+                    <li key={idx} className="text-console-text text-xs font-body">
+                      {warning}
+                    </li>
+                  ))}
+                </ul>
+              </div>
+            )}
+
             {result && (
               <div className="bg-console-panel border border-console-border rounded-lg p-6">
                 <div className="flex items-center justify-between mb-1">

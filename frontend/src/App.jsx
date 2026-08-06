@@ -7,6 +7,7 @@ import Dashboard from "./pages/Dashboard";
 import Prediction from "./pages/Prediction";
 import Routes from "./pages/Routes";
 import Incidents from "./pages/Incidents";
+import Analytics from "./pages/Analytics";
 
 export default function App() {
   return (
@@ -44,6 +45,14 @@ export default function App() {
             element={
               <ProtectedRoute>
                 <Incidents />
+              </ProtectedRoute>
+            }
+          />
+          <Route
+            path="/analytics"
+            element={
+              <ProtectedRoute>
+                <Analytics />
               </ProtectedRoute>
             }
           />

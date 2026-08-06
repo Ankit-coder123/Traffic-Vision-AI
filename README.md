@@ -1,6 +1,6 @@
 # TrafficVision AI
 
-A smart traffic prediction and congestion management platform for Bangalore — a full-stack portfolio project covering authentication, live traffic monitoring, AI-driven congestion prediction, route optimization, and incident reporting.
+A smart traffic prediction and congestion management platform for Bangalore — a full-stack portfolio project covering authentication, live traffic monitoring, AI-driven congestion prediction, route optimization, incident reporting, and an AI-driven analytics/alerts dashboard.
 
 This single README documents the whole project, organized milestone by milestone, covering both the backend (FastAPI) and frontend (React) in one place.
 
@@ -11,9 +11,10 @@ This single README documents the whole project, organized milestone by milestone
 | Layer | Technology |
 |---|---|
 | Backend | FastAPI, SQLAlchemy, PostgreSQL, JWT (python-jose), passlib + bcrypt, python-dotenv |
-| ML | scikit-learn (RandomForest), pandas, joblib |
+| ML | scikit-learn (RandomForest), pandas, joblib — trained model also powers the live AI recommendation engine (Milestone 3), not just the manual prediction page |
 | Routing | OSRM (Open Source Routing Machine) + OpenStreetMap — free, no API key |
-| Frontend | React (Vite), Tailwind CSS, Axios, React Router, Leaflet / react-leaflet |
+| Frontend | React (Vite), Tailwind CSS, Axios, React Router, Leaflet / react-leaflet, Recharts (trend charts), jsPDF + jspdf-autotable (analytics report export) |
+| Deployment | Docker + Docker Compose (Postgres, backend, nginx-served frontend build, simulator — 4 containers, one command) |
 | Tooling | Custom Python data simulator standing in for real traffic sensors |
 
 ---
@@ -29,6 +30,7 @@ TrafficVision-AI/
 │   │   ├── models.py               # SQLAlchemy ORM models
 │   │   ├── schemas.py              # Pydantic request/response schemas
 │   │   ├── security.py             # JWT + password utilities (see note below on why this isn't named auth.py)
+│   │   ├── traffic_model.py        # Shared RandomForest wrapper -- used by both /predict and the AI recommendation engine
 │   │   ├── congestion_model.joblib # Trained RandomForest model
 │   │   ├── target_encoder.joblib
 │   │   └── routers/
@@ -36,18 +38,25 @@ TrafficVision-AI/
 │   │       ├── traffic.py
 │   │       ├── prediction.py
 │   │       ├── routes.py
-│   │       └── incidents.py
+│   │       ├── incidents.py
+│   │       └── analytics.py        # Heatmap, trends, road performance, AI-driven alerts
 │   ├── simulator.py
 │   ├── requirements.txt
+│   ├── Dockerfile
+│   ├── .dockerignore
 │   └── .env.example
 ├── frontend/
-│   └── src/
-│       ├── api/client.js
-│       ├── context/AuthContext.jsx
-│       ├── components/ (NavBar, ProtectedRoute, ZoneCard)
-│       └── pages/ (Login, Signup, Dashboard, Prediction, Routes, Incidents)
+│   ├── src/
+│   │   ├── api/client.js
+│   │   ├── context/AuthContext.jsx
+│   │   ├── components/ (NavBar, ProtectedRoute, ZoneCard, AlertBell)
+│   │   └── pages/ (Login, Signup, Dashboard, Prediction, Routes, Incidents, Analytics)
+│   ├── Dockerfile               # Multi-stage: npm build -> nginx serve
+│   ├── nginx.conf                # SPA routing fallback + asset caching
+│   └── .dockerignore
 ├── ml/                              # Model training pipeline (see Milestone 2)
 ├── docs/ARCHITECTURE.md             # Full DB schema + design notes
+├── docker-compose.yml                # One-command full-stack deployment (see Docker Deployment)
 └── README.md                        # you are here
 ```
 
@@ -164,6 +173,42 @@ If you're working from an older clone, delete `app/auth.py` and add `app/securit
 
 ---
 
+## Milestone 3 (Week 5–6): Alerts, Analytics Dashboard & AI-Driven Recommendations
+
+**Delivered:**
+
+1. **AI-driven alert system** (`backend/app/traffic_model.py`, `routers/analytics.py`)
+   - The congestion-alert half of `GET /analytics/recommendations` is genuinely model-driven, not a fixed threshold rule: for each zone, the last 2–3 live readings are averaged, road occupancy is estimated from vehicle count vs. road-type capacity, and any active accident report on that zone is fed in as a feature — then the **same trained RandomForest classifier** used by `/predict/congestion` scores it. A recommendation fires when the model predicts `"high"` congestion with ≥50% confidence (`critical` severity above 85%).
+   - `traffic_model.py` is a shared module so `/predict/congestion` and the recommendation engine can't drift apart into two different copies of the same logic.
+   - The other half of the alert feed is incident-derived (`source: "incident"`) — active accident/closure/hazard reports, which stay rule-based since they're direct human reports, not predictions.
+   - **Dismissible alerts**: since AI-predicted congestion alerts aren't stored rows the way incidents are, there's nothing to mark "resolved." Instead, `POST /analytics/recommendations/{zone_id}/dismiss` (operator/admin only) records a 30-minute cooldown per zone (`alert_dismissals` table); the alert simply won't be regenerated for that zone until the cooldown expires or conditions genuinely change.
+   - `AlertBell.jsx` (top-nav bell icon) polls both incidents and recommendations every 15s and merges them into one dropdown, with a **Dismiss** button on each AI alert.
+
+2. **Analytics dashboard** (`Analytics.jsx`, `routers/analytics.py`)
+   - `GET /analytics/summary` — city-wide header cards (zone count, active incidents, 24h prediction count, avg speed, busiest zone)
+   - `GET /analytics/heatmap` — latest per-zone congestion reading, rendered as a Leaflet heatmap layer
+   - `GET /analytics/trends` — hourly-bucketed congestion trend per zone (or city-wide), rendered with Recharts
+   - `GET /analytics/road-performance` — readings grouped by road type (highway/arterial/local) instead of per-zone
+   - `GET /analytics/recommendations` — the AI + incident alert feed described above, also shown inline on the Analytics page
+   - **Downloadable PDF report** (`handleDownloadReport`, client-side via jsPDF): bundles the city-wide summary, congestion distribution, AI recommendations, road performance, and current heatmap snapshot into one PDF
+
+**New table introduced:** `alert_dismissals`
+
+**New endpoints introduced:**
+
+| Method | Endpoint | Access |
+|---|---|---|
+| GET | `/analytics/summary` | Authenticated |
+| GET | `/analytics/heatmap` | Authenticated |
+| GET | `/analytics/trends` | Authenticated |
+| GET | `/analytics/road-performance` | Authenticated |
+| GET | `/analytics/recommendations` | Authenticated |
+| POST | `/analytics/recommendations/{zone_id}/dismiss` | Operator/Admin |
+
+**A note on model scope**: the trained classifier only predicts 3 classes (`low` / `medium` / `high`, inherited from the training dataset's labels), while live `traffic_data.congestion_level` also has a `severe` tier from the simulator's own rule-based labeling. The AI recommendation engine treats `"high"` as its trigger condition since that's the model's ceiling — it can't currently distinguish "high" from "severe" congestion. Worth calling out directly rather than glossing over; retraining with a 4-class target is the natural fix.
+
+---
+
 ## Setup & Running
 
 ### 1. Backend
@@ -226,6 +271,35 @@ Visit `http://localhost:5173`. Log in as admin, or sign up as a new Public User 
 
 ---
 
+## Docker Deployment
+
+The whole stack — Postgres, backend, frontend, and the traffic simulator — runs as one command via `docker-compose.yml` at the project root. This is the Milestone 4 "deploy using Docker" requirement.
+
+**Prerequisites:** Docker + Docker Compose (Docker Desktop on Windows/Mac includes both).
+
+```bash
+docker compose up --build
+```
+
+This starts four containers:
+
+| Service | What it does | Exposed at |
+|---|---|---|
+| `db` | PostgreSQL 16, with a healthcheck (`pg_isready`) other services wait on | internal only |
+| `backend` | FastAPI app, waits for `db` to be healthy before starting | `http://localhost:8000` |
+| `frontend` | Production React build served via nginx (with SPA routing + asset caching configured in `frontend/nginx.conf`) | `http://localhost:5173` |
+| `simulator` | Same `simulator.py` used for manual runs, pointed at the `backend` service over the compose network | — (writes to the API) |
+
+The `simulator` service automatically creates the `admin@trafficvision.ai` / `admin123` admin account and seeds all 20 Bangalore zones on first run — no manual setup step needed. Once `docker compose up --build` finishes starting all four containers, open `http://localhost:5173` and log in with those credentials.
+
+**Before deploying this anywhere beyond your own machine**, change two things in `docker-compose.yml`:
+- `JWT_SECRET_KEY` (currently `dev-only-secret-change-me`) — generate a real random secret, e.g. `python -c "import secrets; print(secrets.token_hex(32))"`
+- `POSTGRES_PASSWORD` / `SIMULATOR_ADMIN_PASSWORD` — currently placeholder values fine only for local/demo use
+
+To stop everything: `docker compose down` (add `-v` to also delete the Postgres volume and start fresh next time).
+
+---
+
 ## Full API Reference
 
 | Method | Endpoint | Access | Description |
@@ -247,6 +321,12 @@ Visit `http://localhost:5173`. Log in as admin, or sign up as a new Public User 
 | POST | `/incidents` | Operator/Admin | Report a real-world incident |
 | GET | `/incidents` | Authenticated | View active incidents |
 | PATCH | `/incidents/{id}/resolve` | Operator/Admin | Mark an incident resolved |
+| GET | `/analytics/summary` | Authenticated | City-wide snapshot for dashboard header cards |
+| GET | `/analytics/heatmap` | Authenticated | Latest congestion reading per zone (map heatmap) |
+| GET | `/analytics/trends` | Authenticated | Hourly-bucketed congestion trend per zone |
+| GET | `/analytics/road-performance` | Authenticated | Readings grouped by road type (highway/arterial/local) |
+| GET | `/analytics/recommendations` | Authenticated | AI-driven congestion alerts + active-incident alerts |
+| POST | `/analytics/recommendations/{zone_id}/dismiss` | Operator/Admin | Suppress a zone's AI congestion alert for 30 minutes |
 
 ---
 
@@ -352,13 +432,15 @@ def require_operator_or_admin(current_user: models.User = Depends(get_current_us
 - **City-wide congestion proxy**: route ETA adjustment uses an average of recent readings across all zones, not per-route-segment congestion.
 - **OSRM public demo server**: not meant for production traffic (no uptime guarantee); self-hosting or a paid provider is the natural upgrade.
 - **Polling over WebSockets**: simpler for this project's scope; a documented tradeoff for future real-time work.
+- **AI model is 3-class, not 4-class**: predicts `low`/`medium`/`high` only, so it can't distinguish `severe` from `high` congestion the way the simulator's own labeling does (see Milestone 3 above).
+- **Weather input is static for AI alerts**: the recommendation engine doesn't have a live weather feed, so it always passes `"Clear"` to the model for that feature — a real integration (e.g. OpenWeatherMap) is the natural next step.
+- **Docker Compose secrets are placeholder values**: `JWT_SECRET_KEY`, `POSTGRES_PASSWORD`, and the simulator's admin password are hardcoded in `docker-compose.yml` for one-command local/demo convenience — fine for this project's scope, but a real deployment would pull these from a `.env` file (git-ignored) or a secrets manager instead of committing them.
 
 ---
 
 ## Roadmap
 
-- **Week 5–6 (Milestone 3):** Analytics dashboard with heatmaps and historical trend analysis, building on incident reports and prediction history already being logged
-- **Week 7–8:** Deployment (Docker/cloud), performance tuning, final polish
+- **Week 7–8 (Milestone 4):** ~~Docker deployment~~ done (see Docker Deployment above) — remaining: load/performance testing, final documentation & demo polish
 
 ---
 

@@ -1,10 +1,12 @@
 import { Link, useLocation } from "react-router-dom";
 import { useAuth } from "../context/AuthContext";
+import AlertBell from "./AlertBell";
 
 const NAV_LINKS = [
   { to: "/dashboard", label: "Live Monitoring", roles: ["admin", "operator", "user"] },
   { to: "/prediction", label: "Prediction", roles: ["admin", "operator", "user"] },
   { to: "/routes", label: "Routes", roles: ["admin", "operator", "user"] },
+  { to: "/analytics", label: "Analytics", roles: ["admin", "operator", "user"] },
   { to: "/incidents", label: "Incidents", roles: ["admin", "operator"] },
 ];
 
@@ -70,6 +72,7 @@ export default function NavBar() {
         </div>
 
         <div className="flex items-center gap-4">
+          <AlertBell />
           <div className="text-right">
             <div className="text-console-text text-sm font-body">{user?.name}</div>
             <div className="mt-0.5">

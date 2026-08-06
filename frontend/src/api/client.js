@@ -66,4 +66,15 @@ export const incidentsApi = {
   resolve: (id) => client.patch(`/incidents/${id}/resolve`, { is_resolved: true }),
 };
 
+export const analyticsApi = {
+  getSummary: () => client.get("/analytics/summary"),
+  getHeatmap: () => client.get("/analytics/heatmap"),
+  getTrends: (hours = 24, zoneId = null) =>
+    client.get(`/analytics/trends?hours=${hours}${zoneId ? `&zone_id=${zoneId}` : ""}`),
+  getRecommendations: () => client.get("/analytics/recommendations"),
+  dismissRecommendation: (zoneId, minutes = 30) =>
+    client.post(`/analytics/recommendations/${zoneId}/dismiss?minutes=${minutes}`),
+  getRoadPerformance: (hours = 24) => client.get(`/analytics/road-performance?hours=${hours}`),
+};
+
 export default client;

@@ -63,9 +63,26 @@ def _current_congestion_level(db: Session) -> str:
         return "low"
 
     levels = [r[0].value if hasattr(r[0], "value") else r[0] for r in recent]
-    # Pick the most frequent recent congestion level as the representative one
     most_common = max(set(levels), key=levels.count)
     return most_common
+
+
+def _active_incidents_for_zones(db: Session, zone_ids: list) -> list:
+    """Returns unresolved incidents reported at the given zone IDs. Used to
+    connect Milestone 2's route optimization with Milestone 3's incident
+    reporting -- a route touching a zone with an active major incident
+    should be flagged, not silently recommended as the fastest option."""
+    zone_ids = [z for z in zone_ids if z is not None]
+    if not zone_ids:
+        return []
+    return (
+        db.query(models.IncidentReport)
+        .filter(
+            models.IncidentReport.zone_id.in_(zone_ids),
+            models.IncidentReport.is_resolved == 0,
+        )
+        .all()
+    )
 
 
 @router.post("/optimize", response_model=schemas.RouteOptimizeResponse)
@@ -107,6 +124,28 @@ def optimize_route(
     congestion_level = _current_congestion_level(db)
     multiplier = CONGESTION_MULTIPLIERS.get(congestion_level, 1.0)
 
+    # Milestone 2 x Milestone 3 integration: check whether the origin or
+    # destination zone has an active incident, and penalize the ETA + surface
+    # an explicit warning if so, rather than silently recommending a route
+    # through it as "fastest."
+    incidents = _active_incidents_for_zones(
+        db, [payload.origin_zone_id, payload.destination_zone_id]
+    )
+    incident_penalty = 1.0
+    incident_warnings = []
+    for inc in incidents:
+        severity = inc.severity.value if hasattr(inc.severity, "value") else inc.severity
+        incident_type = inc.incident_type.value if hasattr(inc.incident_type, "value") else inc.incident_type
+        zone_name = inc.zone.name if inc.zone else "this zone"
+        incident_warnings.append(
+            f"Active {incident_type.replace('_', ' ')} ({severity}) reported at {zone_name} — "
+            f"expect delays on routes through this area."
+        )
+        # Major incidents add a heavier penalty than minor ones
+        incident_penalty = max(incident_penalty, {"minor": 1.15, "moderate": 1.35, "major": 1.75}.get(severity, 1.2))
+
+    combined_multiplier = round(multiplier * incident_penalty, 2)
+
     route_options = []
     for r in data["routes"]:
         base_duration_min = r["duration"] / 60
@@ -119,8 +158,8 @@ def optimize_route(
             schemas.RouteOption(
                 distance_km=round(distance_km, 2),
                 base_duration_min=round(base_duration_min, 1),
-                congestion_multiplier=multiplier,
-                estimated_duration_min=round(base_duration_min * multiplier, 1),
+                congestion_multiplier=combined_multiplier,
+                estimated_duration_min=round(base_duration_min * combined_multiplier, 1),
                 geometry=geometry,
             )
         )
@@ -135,6 +174,7 @@ def optimize_route(
         destination={"lat": dest_lat, "lng": dest_lng},
         congestion_level_used=congestion_level,
         routes=route_options,
+        incident_warnings=incident_warnings,
     )
 
 

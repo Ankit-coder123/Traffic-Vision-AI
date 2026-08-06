@@ -1,4 +1,4 @@
-# Architecture — Milestones 1 & 2 (Week 1–4)
+# Architecture — Milestones 1, 2 & 3 (Week 1–6)
 
 ## System Overview
 
@@ -93,6 +93,24 @@ saved_routes
 
 `users.role` now has three values: `admin` / `operator` / `user`, enforced via a **bootstrap-admin pattern** — only the very first account ever created (`users` table empty) can self-assign `admin` through `POST /auth/signup`; every signup after that is capped at `operator`/`user` regardless of what the request asks for. This closes a real privilege-escalation vulnerability that existed in an earlier version of the endpoint.
 
+## Milestone 3 additions — Alerts, Analytics & AI Insights
+
+```
+alert_dismissals
+├── id                   PK
+├── zone_id                FK → traffic_zones.id
+├── dismissed_by_user_id    FK → users.id
+├── dismissed_at
+└── expires_at              indexed -- cooldown window, defaults to 30 min
+```
+
+**Alert system** (`GET /analytics/recommendations`, `AlertBell.jsx`): two independent sources feed one combined alert list.
+- **Incidents** (`source: "incident"`) — direct human reports (accidents, closures, hazards) from `incident_reports`, resolved manually via `PATCH /incidents/{id}/resolve`.
+- **Congestion predictions** (`source: "congestion"`) — genuinely model-driven, not a fixed threshold rule. For each zone, the last few live readings are averaged and fed into the same trained `RandomForestClassifier` used by `/predict/congestion` (factored into a shared `app/traffic_model.py` module so both call sites stay in sync). If the model predicts `"high"` congestion with ≥50% confidence, a recommendation is raised, with severity escalating to `critical` above 85% confidence. Active accident reports for a zone are fed into the model as the `Accident_Report` feature, so a reported accident nudges the prediction.
+- Since congestion predictions aren't stored rows, "resolving" one isn't a status flip — `POST /analytics/recommendations/{zone_id}/dismiss` instead records a time-boxed suppression window in `alert_dismissals`; the recommendation simply won't be regenerated for that zone until the cooldown expires.
+
+**Analytics dashboard** (`Analytics.jsx`): congestion heatmap (`GET /analytics/heatmap`), hourly trend charts (`GET /analytics/trends`), road-type performance breakdown (`GET /analytics/road-performance`), and a client-side PDF export (`handleDownloadReport`, via jsPDF) that bundles the city-wide summary, AI recommendations, road performance, and heatmap snapshot into a single downloadable report.
+
 ## Authentication Flow
 
 1. Client submits credentials to `POST /auth/login`.
@@ -114,4 +132,5 @@ JWTs are stateless by design — no server-side session store is required, which
 - **No schema migration tool**: `Base.metadata.create_all()` creates tables that don't exist but never alters existing ones. Adding a column or enum value requires a full schema drop/recreate in development. A production system would use Alembic to generate proper `ALTER TABLE` migrations instead.
 - **City-wide congestion proxy for routing**: route ETA adjustment currently uses an average of recent congestion readings across *all* zones, not congestion mapped to the specific road segments in each candidate route. A more precise version would match route geometry to nearby zones.
 - **OSRM public demo server**: used for route optimization since it requires no billing/API key, but it's not meant for production traffic (undocumented rate limits, no uptime guarantee). Self-hosting OSRM or switching to a paid provider (Google Maps, Mapbox) is the natural production upgrade — swapping providers only touches `routers/routes.py`.
-- **Prediction model trained on a synthetic Kaggle dataset**: EDA revealed the dataset's congestion labels are driven almost entirely by vehicle count, occupancy, and speed, with weather and time-of-day contributing very little (~1% feature importance each). The model correctly reflects this; validating against real-world or longer-running self-generated data is the natural next step for a more realistic accuracy figure. Full discussion in `ml/README.md` and `ml/eda/EDA_SUMMARY.md`.
+- **Prediction model trained on a synthetic Kaggle dataset**: EDA revealed the dataset's congestion labels are driven almost entirely by vehicle count, occupancy, and speed, with weather and time-of-day contributing very little (~1% feature importance each). The model correctly reflects this; validating against real-world or longer-running self-generated data is the natural next step for a more realistic accuracy figure. Full discussion in the root `README.md` (Milestone 2 section) and `ml/eda/EDA_SUMMARY.md`.
+- **Model only predicts 3 classes**: the trained classifier's target is `low` / `medium` / `high` (from the training dataset), while live `traffic_data.congestion_level` also has a `severe` tier. The AI-driven recommendation engine treats `"high"` as the trigger condition since that's the model's ceiling — it can't distinguish "high" from "severe" the way the simulator's own rule-based labeling does. Retraining with a 4-class target (or bucketing `severe` into `high` at the label level) would close this gap.

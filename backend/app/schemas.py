@@ -139,6 +139,7 @@ class RouteOptimizeResponse(BaseModel):
     destination: dict
     congestion_level_used: str   # what congestion level informed the multiplier
     routes: list[RouteOption]
+    incident_warnings: list[str] = []
 
 
 # ---------- Incident Reports (operator/admin only) ----------
@@ -188,3 +189,62 @@ class SavedRouteOut(BaseModel):
 
     class Config:
         from_attributes = True
+
+
+# ---------- Analytics (Milestone 3) ----------
+
+class DashboardSummary(BaseModel):
+    total_zones: int
+    active_incidents: int
+    total_predictions_24h: int
+    congestion_distribution: dict          # {"low": 5, "medium": 10, "high": 7}
+    busiest_zone: Optional[str] = None       # zone with most 'high' readings recently
+    city_avg_speed_kmph: Optional[float] = None
+
+
+class HeatmapPoint(BaseModel):
+    zone_id: int
+    zone_name: str
+    latitude: float
+    longitude: float
+    congestion_level: str        # most recent reading's level
+    vehicle_count: Optional[int] = None
+
+
+class RoadPerformance(BaseModel):
+    road_type: str                    # 'highway' | 'arterial' | 'local'
+    zone_count: int                   # how many zones of this road type
+    reading_count: int                # how many recent readings this is based on
+    avg_speed_kmph: float
+    avg_vehicle_count: float
+    avg_congestion_score: float       # 0=low .. 3=severe
+    worst_zone: Optional[str] = None  # zone with the most 'high'/'severe' readings in this group
+
+
+class TrendPoint(BaseModel):
+    period: str            # e.g. "2026-07-28 14:00" (hourly bucket)
+    avg_vehicle_count: float
+    avg_speed_kmph: float
+    congestion_score: float   # numeric encoding of avg congestion (0=low .. 3=severe)
+
+
+class ZoneTrend(BaseModel):
+    zone_id: int
+    zone_name: str
+    points: list[TrendPoint]
+
+
+class RecommendationOut(BaseModel):
+    zone_id: Optional[int]
+    zone_name: Optional[str]
+    title: str
+    message: str
+    severity: str   # 'info' | 'warning' | 'critical'
+    source: str     # 'congestion' | 'incident' -- lets the UI avoid double-counting
+                    # an incident that already appears in the incidents list
+
+
+class AlertDismissalOut(BaseModel):
+    zone_id: int
+    dismissed_at: datetime
+    expires_at: datetime

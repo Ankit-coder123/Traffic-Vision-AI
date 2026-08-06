@@ -1,5 +1,6 @@
 from datetime import datetime, timedelta
 from typing import Optional
+import os
 
 from fastapi import Depends, HTTPException, status
 from fastapi.security import OAuth2PasswordBearer
@@ -10,8 +11,12 @@ from sqlalchemy.orm import Session
 from app.database import get_db
 from app import models
 
-# --- Config (in a real deployment, load SECRET_KEY from an env variable, never hardcode) ---
-SECRET_KEY = "CHANGE_THIS_TO_A_RANDOM_SECRET_IN_PRODUCTION"
+# --- Config ---
+# Reads from env (set via .env locally, or the `backend` service's
+# environment in docker-compose.yml). Falls back to an obviously-fake dev
+# value so local `python -m uvicorn` still works without extra setup --
+# but that fallback must never be used in a real deployment.
+SECRET_KEY = os.getenv("JWT_SECRET_KEY", "CHANGE_THIS_TO_A_RANDOM_SECRET_IN_PRODUCTION")
 ALGORITHM = "HS256"
 ACCESS_TOKEN_EXPIRE_MINUTES = 60 * 24  # 1 day
 

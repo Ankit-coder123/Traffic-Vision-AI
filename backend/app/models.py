@@ -106,6 +106,24 @@ class IncidentReport(Base):
     zone = relationship("TrafficZone")
 
 
+class AlertDismissal(Base):
+    """Tracks operator/admin dismissals of auto-generated 'persistent
+    congestion' recommendations (see analytics.get_recommendations). These
+    recommendations are computed live from recent TrafficData readings
+    rather than stored as rows themselves, so there's nothing to mark
+    resolved directly -- instead we record a cooldown window per zone and
+    suppress the recommendation for that zone until it expires."""
+    __tablename__ = "alert_dismissals"
+
+    id = Column(Integer, primary_key=True, index=True)
+    zone_id = Column(Integer, ForeignKey("traffic_zones.id"), nullable=False, index=True)
+    dismissed_by_user_id = Column(Integer, ForeignKey("users.id"), nullable=False)
+    dismissed_at = Column(DateTime, default=datetime.utcnow)
+    expires_at = Column(DateTime, nullable=False, index=True)
+
+    zone = relationship("TrafficZone")
+
+
 class SavedRoute(Base):
     """A user's personally saved origin/destination pair for quick re-use
     on the Routes page -- available to every role, but framed as primarily

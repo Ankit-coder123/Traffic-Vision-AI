@@ -11,17 +11,21 @@ Run this in a SEPARATE terminal while your FastAPI server is running:
 It talks to the API over HTTP, exactly like a real sensor gateway would.
 """
 
+import os
 import random
 import time
 from datetime import datetime
 
 import requests
 
-API_BASE_URL = "http://localhost:8000"
+# In docker-compose this is set to http://backend:8000 (the service name
+# doubles as the DNS hostname on the compose network). Defaults to
+# localhost for running the simulator directly on your machine.
+API_BASE_URL = os.getenv("API_BASE_URL", "http://localhost:8000")
 
 # Change these to a real admin account you create via /auth/signup
-ADMIN_EMAIL = "admin@trafficvision.ai"
-ADMIN_PASSWORD = "admin123"
+ADMIN_EMAIL = os.getenv("SIMULATOR_ADMIN_EMAIL", "admin@trafficvision.ai")
+ADMIN_PASSWORD = os.getenv("SIMULATOR_ADMIN_PASSWORD", "admin123")
 
 # Seed zones - realistic Indian city road names as an example
 # All zones are real locations within Bangalore, India -- scoped to a single
@@ -58,6 +62,23 @@ SEED_ZONES = [
     {"name": "Nagawara Junction", "latitude": 13.0428, "longitude": 77.6208, "road_type": "arterial"},
     {"name": "Vijayanagar", "latitude": 12.9719, "longitude": 77.5330, "road_type": "local"},
 ]
+
+
+def wait_for_backend(timeout_seconds: int = 60) -> None:
+    """Only matters in docker-compose: the backend container can take a few
+    seconds to finish connecting to Postgres and creating tables after it
+    starts, so a simulator container starting at the same time needs to
+    poll rather than assume the API is immediately reachable."""
+    deadline = time.time() + timeout_seconds
+    while time.time() < deadline:
+        try:
+            if requests.get(f"{API_BASE_URL}/", timeout=3).status_code == 200:
+                return
+        except requests.exceptions.RequestException:
+            pass
+        print(f"Waiting for backend at {API_BASE_URL} ...")
+        time.sleep(2)
+    raise RuntimeError(f"Backend at {API_BASE_URL} did not become ready in {timeout_seconds}s")
 
 
 def get_token() -> str:
@@ -139,6 +160,7 @@ def generate_reading(road_type: str) -> dict:
 
 
 def run_simulation(interval_seconds: int = 5):
+    wait_for_backend()
     token = get_token()
     zones = ensure_zones_exist(token)
     headers = {"Authorization": f"Bearer {token}"}

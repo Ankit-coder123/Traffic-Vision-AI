@@ -1,0 +1,70 @@
+# TrafficVision AI -- one-command local deployment.
+#
+#   docker compose up --build
+#
+# Then open http://localhost:5173
+#
+# The default credentials below are fine for local/demo use only -- see the
+# "Docker Deployment" section in README.md before deploying this anywhere
+# public.
+
+services:
+  db:
+    image: postgres:16-alpine
+    restart: unless-stopped
+    environment:
+      POSTGRES_USER: postgres
+      POSTGRES_PASSWORD: postgres
+      POSTGRES_DB: trafficvision
+    volumes:
+      - pgdata:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U postgres"]
+      interval: 5s
+      timeout: 5s
+      retries: 10
+
+  backend:
+    build: ./backend
+    restart: unless-stopped
+    depends_on:
+      db:
+        condition: service_healthy
+    environment:
+      DB_USER: postgres
+      DB_PASSWORD: postgres
+      DB_HOST: db
+      DB_PORT: 5432
+      DB_NAME: trafficvision
+      # Change this to a real random secret before deploying anywhere
+      # non-local -- see README.md's Docker Deployment section.
+      JWT_SECRET_KEY: dev-only-secret-change-me
+    ports:
+      - "8000:8000"
+
+  frontend:
+    build: ./frontend
+    restart: unless-stopped
+    depends_on:
+      - backend
+    ports:
+      # Mapped to the same port the Vite dev server already used, so
+      # CORS in backend/app/main.py and the README's "open this URL"
+      # instructions don't need to change between docker and non-docker use.
+      - "5173:80"
+
+  simulator:
+    build: ./backend
+    command: ["python", "simulator.py"]
+    restart: unless-stopped
+    depends_on:
+      - backend
+    environment:
+      # Service name "backend" is resolvable as a hostname on the compose
+      # network -- this would NOT work outside docker-compose.
+      API_BASE_URL: http://backend:8000
+      SIMULATOR_ADMIN_EMAIL: admin@trafficvision.ai
+      SIMULATOR_ADMIN_PASSWORD: admin123
+
+volumes:
+  pgdata:
