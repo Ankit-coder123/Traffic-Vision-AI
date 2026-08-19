@@ -1,7 +1,7 @@
 import enum
 from datetime import datetime
 
-from sqlalchemy import Column, Integer, String, Float, DateTime, ForeignKey, Enum
+from sqlalchemy import Column, Integer, String, Float, DateTime, ForeignKey, Enum, Index
 from sqlalchemy.orm import relationship
 
 from app.database import Base
@@ -60,6 +60,15 @@ class TrafficZone(Base):
 
 class TrafficData(Base):
     __tablename__ = "traffic_data"
+    # The single hottest query pattern in the whole app is "most recent N
+    # readings for this zone" (analytics.py's recommendations/heatmap/trends,
+    # traffic.py's zone history) -- a single column index on recorded_at
+    # can't serve that efficiently, since Postgres still has to walk rows
+    # in date order and filter zone_id afterward. Confirmed with a real
+    # EXPLAIN ANALYZE: "Rows Removed by Filter: 360" out of 400 total rows
+    # (see README's Performance Metrics section). A composite index lets
+    # Postgres jump straight to this zone's rows, already sorted.
+    __table_args__ = (Index("ix_traffic_data_zone_recorded", "zone_id", "recorded_at"),)
 
     id = Column(Integer, primary_key=True, index=True)
     zone_id = Column(Integer, ForeignKey("traffic_zones.id"), nullable=False)
@@ -100,7 +109,7 @@ class IncidentReport(Base):
     severity = Column(Enum(IncidentSeverity), nullable=False)
     description = Column(String, nullable=True)
     reported_by_user_id = Column(Integer, ForeignKey("users.id"), nullable=False)
-    is_resolved = Column(Integer, default=0)  # 0/1 boolean flag (portable across SQLite/Postgres)
+    is_resolved = Column(Integer, default=0, index=True)  # 0/1 boolean flag (portable across SQLite/Postgres) -- filtered on constantly (get_recommendations, GET /incidents ?active_only)
     created_at = Column(DateTime, default=datetime.utcnow, index=True)
 
     zone = relationship("TrafficZone")
@@ -131,7 +140,7 @@ class SavedRoute(Base):
     __tablename__ = "saved_routes"
 
     id = Column(Integer, primary_key=True, index=True)
-    user_id = Column(Integer, ForeignKey("users.id"), nullable=False)
+    user_id = Column(Integer, ForeignKey("users.id"), nullable=False, index=True)  # GET /routes/saved always filters by current user
     label = Column(String, nullable=False)  # e.g. "Home to Office"
     origin_zone_id = Column(Integer, ForeignKey("traffic_zones.id"), nullable=False)
     destination_zone_id = Column(Integer, ForeignKey("traffic_zones.id"), nullable=False)

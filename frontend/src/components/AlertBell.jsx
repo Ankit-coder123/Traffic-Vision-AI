@@ -97,7 +97,7 @@ export default function AlertBell() {
       </button>
 
       {open && (
-        <div className="absolute right-0 mt-2 w-80 bg-console-panel border border-console-border rounded-lg shadow-xl z-50 max-h-[400px] overflow-y-auto">
+        <div className="absolute right-0 mt-2 w-80 bg-console-panel border border-console-border rounded-lg shadow-xl z-50 max-h-[400px] overflow-y-auto origin-top-right animate-fade-in-scale">
           <div className="px-4 py-3 border-b border-console-border">
             <h4 className="text-console-text text-sm font-display font-semibold">Alerts</h4>
             <p className="text-console-muted text-[10px] font-mono">

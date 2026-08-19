@@ -14,7 +14,7 @@ services:
     restart: unless-stopped
     environment:
       POSTGRES_USER: postgres
-      POSTGRES_PASSWORD: postgres
+      POSTGRES_PASSWORD: Ankit@123
       POSTGRES_DB: trafficvision
     volumes:
       - pgdata:/var/lib/postgresql/data
@@ -32,18 +32,35 @@ services:
         condition: service_healthy
     environment:
       DB_USER: postgres
-      DB_PASSWORD: postgres
+      DB_PASSWORD: Ankit@123
       DB_HOST: db
       DB_PORT: 5432
       DB_NAME: trafficvision
       # Change this to a real random secret before deploying anywhere
       # non-local -- see README.md's Docker Deployment section.
       JWT_SECRET_KEY: dev-only-secret-change-me
+      # Optional -- Google Sign-In. Blank by default (the button just
+      # doesn't render if unset). Pulled from a root-level .env file if
+      # you create one; see .env.example.
+      GOOGLE_CLIENT_ID: 647527927598-8mph772o7d4c74a3qgdvibp2r7nnta1c.apps.googleusercontent.com
+      # Optional -- email alerts on new incidents. Same deal: blank means
+      # incident reporting still works, it just skips sending email.
+      SMTP_HOST: smtp.gmail.com
+      SMTP_PORT: 465
+      SMTP_USER: ankitchaudhary300504@gmail.com
+      SMTP_PASSWORD: cozg ognc sxzd xqyp
+      SMTP_FROM_NAME: TrafficVision AI
     ports:
       - "8000:8000"
 
   frontend:
-    build: ./frontend
+    build:
+      context: ./frontend
+      args:
+        # Vite bakes env vars into the build at build time, not runtime --
+        # so this has to be a build arg, not a plain `environment:` entry
+        # (which frontend containers never actually read once running).
+        VITE_GOOGLE_CLIENT_ID: 647527927598-8mph772o7d4c74a3qgdvibp2r7nnta1c.apps.googleusercontent.com
     restart: unless-stopped
     depends_on:
       - backend
@@ -63,8 +80,15 @@ services:
       # Service name "backend" is resolvable as a hostname on the compose
       # network -- this would NOT work outside docker-compose.
       API_BASE_URL: http://backend:8000
-      SIMULATOR_ADMIN_EMAIL: admin@trafficvision.ai
+      # Defaults to a placeholder @trafficvision.ai address, which isn't a
+      # real deliverable domain -- fine as long as SMTP_USER above stays
+      # blank, but if you DO configure email alerts, this placeholder
+      # account will bounce on every incident report. Override both via a
+      # root-level .env file (same one used for GOOGLE_CLIENT_ID/SMTP_*)
+      # with a real email you control.
+      SIMULATOR_ADMIN_EMAIL: ankitchaudhary300504@gmail.com
       SIMULATOR_ADMIN_PASSWORD: admin123
 
 volumes:
   pgdata:
+  

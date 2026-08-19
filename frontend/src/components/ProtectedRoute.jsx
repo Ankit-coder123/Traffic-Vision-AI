@@ -6,8 +6,11 @@ export default function ProtectedRoute({ children }) {
 
   if (loading) {
     return (
-      <div className="min-h-screen flex items-center justify-center bg-console-bg text-console-muted font-mono text-sm">
-        Checking credentials...
+      <div className="min-h-screen flex items-center justify-center bg-console-bg">
+        <div className="flex items-center gap-3 text-console-muted font-mono text-sm">
+          <span className="w-2 h-2 rounded-full bg-accent animate-pulse" />
+          Checking credentials...
+        </div>
       </div>
     );
   }

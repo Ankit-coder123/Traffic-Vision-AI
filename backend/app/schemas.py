@@ -1,5 +1,5 @@
 from datetime import datetime
-from typing import Optional
+from typing import List, Optional
 
 from pydantic import BaseModel, EmailStr
 
@@ -29,9 +29,19 @@ class UserOut(BaseModel):
         from_attributes = True   # allows returning SQLAlchemy objects directly
 
 
+class ProfileUpdate(BaseModel):
+    name: Optional[str] = None
+    current_password: Optional[str] = None   # required only if setting new_password
+    new_password: Optional[str] = None
+
+
 class Token(BaseModel):
     access_token: str
     token_type: str = "bearer"
+
+
+class GoogleAuthRequest(BaseModel):
+    credential: str   # the ID token JWT returned by Google Identity Services
 
 
 # ---------- Traffic Zones ----------
@@ -211,6 +221,17 @@ class HeatmapPoint(BaseModel):
     vehicle_count: Optional[int] = None
 
 
+class RoadConditionOut(BaseModel):
+    zone_id: int
+    zone_name: str
+    road_type: str
+    status: str                       # 'normal' | 'congested' | 'impaired' | 'closed'
+    congestion_level: Optional[str]   # most recent reading's level, if any
+    active_incident_type: Optional[str] = None
+    active_incident_severity: Optional[str] = None
+    last_updated: Optional[datetime] = None
+
+
 class RoadPerformance(BaseModel):
     road_type: str                    # 'highway' | 'arterial' | 'local'
     zone_count: int                   # how many zones of this road type
@@ -248,3 +269,30 @@ class AlertDismissalOut(BaseModel):
     zone_id: int
     dismissed_at: datetime
     expires_at: datetime
+
+
+class HourlyPatternPoint(BaseModel):
+    hour: int              # 0-23
+    avg_congestion_score: float   # 0 (low) - 3 (severe)
+    sample_count: int
+    is_peak: bool          # True if this hour is among the top peak hours
+
+
+class DailyPatternPoint(BaseModel):
+    day_of_week: int       # 0=Monday ... 6=Sunday (Python's datetime.weekday() convention)
+    day_name: str
+    avg_congestion_score: float
+    sample_count: int
+    is_peak: bool
+
+
+class PeakHourAnalysisOut(BaseModel):
+    zone_id: Optional[int]
+    zone_name: Optional[str]
+    lookback_days: int
+    total_readings_analyzed: int
+    hourly_pattern: List[HourlyPatternPoint]
+    daily_pattern: List[DailyPatternPoint]
+    peak_hours: List[int]      # the actual hour numbers flagged as peak
+    peak_days: List[str]       # the actual day names flagged as peak
+    summary: str                # plain-language takeaway

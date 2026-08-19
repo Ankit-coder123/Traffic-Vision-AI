@@ -17,13 +17,20 @@ import time
 from datetime import datetime
 
 import requests
+from dotenv import load_dotenv
+
+load_dotenv()  # reads backend/.env if present, same as the rest of the app
 
 # In docker-compose this is set to http://backend:8000 (the service name
 # doubles as the DNS hostname on the compose network). Defaults to
 # localhost for running the simulator directly on your machine.
 API_BASE_URL = os.getenv("API_BASE_URL", "http://localhost:8000")
 
-# Change these to a real admin account you create via /auth/signup
+# Defaults to a placeholder @trafficvision.ai address, which isn't a real,
+# deliverable domain -- fine if you never configure email alerts (SMTP_USER
+# unset means alerts are skipped entirely), but if you DO turn on email
+# alerts, this placeholder account will always bounce. Override both of
+# these in backend/.env with a real email you control to avoid that.
 ADMIN_EMAIL = os.getenv("SIMULATOR_ADMIN_EMAIL", "admin@trafficvision.ai")
 ADMIN_PASSWORD = os.getenv("SIMULATOR_ADMIN_PASSWORD", "admin123")
 

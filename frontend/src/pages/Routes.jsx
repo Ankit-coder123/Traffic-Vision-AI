@@ -194,7 +194,7 @@ export default function Routes() {
   return (
     <div className="min-h-screen bg-console-bg">
       <NavBar />
-      <div className="max-w-6xl mx-auto px-6 py-8">
+      <div className="max-w-6xl mx-auto px-6 py-8 animate-fade-in">
         <div className="mb-6">
           <h2 className="font-display font-bold text-xl text-console-text">
             Route Optimization
@@ -277,7 +277,7 @@ export default function Routes() {
               <button
                 type="submit"
                 disabled={loading}
-                className="w-full bg-accent text-console-bg font-display font-semibold rounded py-2.5 text-sm tracking-wide hover:bg-accent/90 disabled:opacity-50 transition-colors"
+                className="w-full bg-accent text-console-bg font-display font-semibold rounded py-2.5 text-sm tracking-wide hover:bg-accent/90 active:scale-[0.98] disabled:opacity-50 disabled:active:scale-100 transition"
               >
                 {loading ? "Finding routes..." : "Find Routes"}
               </button>

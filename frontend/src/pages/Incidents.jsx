@@ -2,6 +2,7 @@ import { useEffect, useState } from "react";
 import { incidentsApi, trafficApi } from "../api/client";
 import { useAuth } from "../context/AuthContext";
 import NavBar from "../components/NavBar";
+import { Skeleton } from "../components/Skeleton";
 
 const INCIDENT_TYPES = [
   { value: "accident", label: "Accident" },
@@ -31,10 +32,15 @@ export default function Incidents() {
   });
   const [submitting, setSubmitting] = useState(false);
   const [error, setError] = useState("");
+  const [incidentsLoading, setIncidentsLoading] = useState(true);
 
   useEffect(() => {
     trafficApi.getZones().then((res) => setZones(res.data)).catch(() => {});
-    loadIncidents();
+    incidentsApi
+      .list(true)
+      .then((res) => setIncidents(res.data))
+      .catch(() => {})
+      .finally(() => setIncidentsLoading(false));
   }, []);
 
   const loadIncidents = () => {
@@ -80,7 +86,7 @@ export default function Incidents() {
   return (
     <div className="min-h-screen bg-console-bg">
       <NavBar />
-      <div className="max-w-6xl mx-auto px-6 py-8">
+      <div className="max-w-6xl mx-auto px-6 py-8 animate-fade-in">
         <div className="mb-6">
           <h2 className="font-display font-bold text-xl text-console-text">Incidents</h2>
           <p className="text-console-muted text-sm font-mono mt-1">
@@ -179,7 +185,7 @@ export default function Incidents() {
               <button
                 type="submit"
                 disabled={submitting}
-                className="w-full bg-accent text-console-bg font-display font-semibold rounded py-2.5 text-sm tracking-wide hover:bg-accent/90 disabled:opacity-50 transition-colors"
+                className="w-full bg-accent text-console-bg font-display font-semibold rounded py-2.5 text-sm tracking-wide hover:bg-accent/90 active:scale-[0.98] disabled:opacity-50 disabled:active:scale-100 transition"
               >
                 {submitting ? "Reporting..." : "Report Incident"}
               </button>
@@ -192,7 +198,13 @@ export default function Incidents() {
                 Active Incidents ({incidents.length})
               </h3>
 
-              {incidents.length === 0 ? (
+              {incidentsLoading ? (
+                <div className="space-y-3">
+                  {Array.from({ length: 3 }).map((_, i) => (
+                    <SkeletonIncidentRow key={i} />
+                  ))}
+                </div>
+              ) : incidents.length === 0 ? (
                 <p className="text-console-muted text-sm font-body py-6 text-center">
                   No active incidents reported right now.
                 </p>
@@ -238,6 +250,22 @@ export default function Incidents() {
           </div>
         </div>
       </div>
+    </div>
+  );
+}
+
+function SkeletonIncidentRow() {
+  return (
+    <div className="p-3 rounded border border-console-border flex items-start justify-between gap-3">
+      <div className="flex-1">
+        <div className="flex items-center gap-2 mb-2">
+          <Skeleton className="h-4 w-14" />
+          <Skeleton className="h-4 w-28" />
+        </div>
+        <Skeleton className="h-3 w-20 mb-1.5" />
+        <Skeleton className="h-2.5 w-32" />
+      </div>
+      <Skeleton className="h-3 w-16 shrink-0" />
     </div>
   );
 }

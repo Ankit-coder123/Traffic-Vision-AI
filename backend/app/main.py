@@ -1,3 +1,5 @@
+import os
+
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 
@@ -13,14 +15,20 @@ app = FastAPI(
     version="0.1.0",
 )
 
-# Allow the React frontend (running on a different port) to call this API
+# Allow the React frontend (running on a different port, or a different
+# domain entirely once deployed) to call this API.
+_extra_origin = os.getenv("FRONTEND_URL")  # e.g. https://trafficvision-ai.onrender.com
+_allow_origins = [
+    "http://localhost:5173",
+    "http://localhost:5174",  # Vite falls back to this if 5173 is already in use
+    "http://localhost:5175",  # ...and this if both are taken
+]
+if _extra_origin:
+    _allow_origins.append(_extra_origin)
+
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=[
-        "http://localhost:5173",
-        "http://localhost:5174",  # Vite falls back to this if 5173 is already in use
-        "http://localhost:5175",  # ...and this if both are taken
-    ],
+    allow_origins=_allow_origins,
     allow_credentials=True,
     allow_methods=["*"],
     allow_headers=["*"],

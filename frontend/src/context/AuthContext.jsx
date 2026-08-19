@@ -28,6 +28,20 @@ export function AuthProvider({ children }) {
     return me.data;
   };
 
+  const loginWithGoogle = async (credential) => {
+    const res = await authApi.googleLogin(credential);
+    localStorage.setItem("tv_token", res.data.access_token);
+    const me = await authApi.me();
+    setUser(me.data);
+    return me.data;
+  };
+
+  const updateProfile = async (payload) => {
+    const res = await authApi.updateProfile(payload);
+    setUser(res.data);
+    return res.data;
+  };
+
   const signup = async (name, email, password, role = "user") => {
     // Public signup only ever sends 'operator' or 'user' -- 'admin' isn't
     // offered as a choice in the UI (see Signup.jsx).
@@ -41,7 +55,7 @@ export function AuthProvider({ children }) {
   };
 
   return (
-    <AuthContext.Provider value={{ user, loading, login, signup, logout }}>
+    <AuthContext.Provider value={{ user, loading, login, loginWithGoogle, updateProfile, signup, logout }}>
       {children}
     </AuthContext.Provider>
   );

@@ -78,3 +78,46 @@ def require_operator_or_admin(current_user: models.User = Depends(get_current_us
             detail="Operator or admin privileges required",
         )
     return current_user
+
+
+# --- Google Sign-In ---
+# GOOGLE_CLIENT_ID is public (it's embedded in the frontend bundle too --
+# that's normal for OAuth "client" IDs, unlike a client *secret*). We use
+# the "ID token" flow: Google Identity Services on the frontend returns a
+# signed JWT directly to the browser, which POSTs it here for verification.
+# No client secret or server-side redirect exchange needed for this flow.
+GOOGLE_CLIENT_ID = os.getenv("GOOGLE_CLIENT_ID", "")
+
+
+def verify_google_token(credential: str) -> dict:
+    """Verifies a Google ID token's signature/audience/issuer and returns
+    its claims (email, name, email_verified, ...). Raises HTTPException on
+    anything invalid -- expired token, wrong audience, tampered signature."""
+    # Imported lazily so the rest of the app still works even if a
+    # deployment hasn't installed google-auth / configured Google sign-in.
+    from google.auth.transport import requests as google_requests
+    from google.oauth2 import id_token as google_id_token
+
+    if not GOOGLE_CLIENT_ID:
+        raise HTTPException(
+            status_code=status.HTTP_501_NOT_IMPLEMENTED,
+            detail="Google sign-in isn't configured on this server (GOOGLE_CLIENT_ID missing).",
+        )
+
+    try:
+        claims = google_id_token.verify_oauth2_token(
+            credential, google_requests.Request(), GOOGLE_CLIENT_ID
+        )
+    except ValueError:
+        raise HTTPException(
+            status_code=status.HTTP_401_UNAUTHORIZED,
+            detail="Invalid or expired Google sign-in token",
+        )
+
+    if not claims.get("email_verified", False):
+        raise HTTPException(
+            status_code=status.HTTP_401_UNAUTHORIZED,
+            detail="Google account email is not verified",
+        )
+
+    return claims

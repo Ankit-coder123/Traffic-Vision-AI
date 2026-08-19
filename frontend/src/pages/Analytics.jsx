@@ -20,6 +20,7 @@ import "leaflet/dist/leaflet.css";
 import "leaflet.heat";
 import { analyticsApi, trafficApi } from "../api/client";
 import NavBar from "../components/NavBar";
+import { Skeleton } from "../components/Skeleton";
 
 // Maps congestion level to a heat "intensity" weight -- fed into Leaflet.heat
 // as the third value per point ([lat, lng, intensity]). Higher intensity
@@ -93,6 +94,8 @@ export default function Analytics() {
   const [windowHours, setWindowHours] = useState(24);
   const [recommendations, setRecommendations] = useState([]);
   const [roadPerformance, setRoadPerformance] = useState([]);
+  const [peakHours, setPeakHours] = useState(null);
+  const [peakHoursError, setPeakHoursError] = useState("");
   const [loading, setLoading] = useState(true);
 
   useEffect(() => {
@@ -104,15 +107,20 @@ export default function Analytics() {
 
   useEffect(() => {
     loadTrends();
+    loadPeakHours();
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [selectedZoneId, windowHours]);
 
   const loadAll = () => {
-    analyticsApi.getSummary().then((res) => setSummary(res.data)).catch(() => {});
-    analyticsApi.getHeatmap().then((res) => setHeatmap(res.data)).catch(() => {});
-    analyticsApi.getRecommendations().then((res) => setRecommendations(res.data)).catch(() => {});
-    analyticsApi.getRoadPerformance(24).then((res) => setRoadPerformance(res.data)).catch(() => {});
-    setLoading(false);
+    const summaryP = analyticsApi.getSummary().then((res) => setSummary(res.data)).catch(() => {});
+    const heatmapP = analyticsApi.getHeatmap().then((res) => setHeatmap(res.data)).catch(() => {});
+    const recsP = analyticsApi.getRecommendations().then((res) => setRecommendations(res.data)).catch(() => {});
+    const roadPerfP = analyticsApi.getRoadPerformance(24).then((res) => setRoadPerformance(res.data)).catch(() => {});
+    // Promise.all rather than four independent fire-and-forget calls: each
+    // branch already swallows its own error above, so this can't reject --
+    // it just lets us flip `loading` off once every panel actually has data,
+    // instead of the instant after the requests are merely dispatched.
+    Promise.all([summaryP, heatmapP, recsP, roadPerfP]).finally(() => setLoading(false));
   };
 
   const loadTrends = () => {
@@ -120,6 +128,21 @@ export default function Analytics() {
       .getTrends(windowHours, selectedZoneId || null)
       .then((res) => setTrends(res.data))
       .catch(() => {});
+  };
+
+  const loadPeakHours = () => {
+    setPeakHoursError("");
+    analyticsApi
+      .getPeakHours(selectedZoneId || null, 30)
+      .then((res) => setPeakHours(res.data))
+      .catch((err) => {
+        setPeakHours(null);
+        // 404 here just means "not enough data yet" -- not a real error,
+        // don't scare the user with it, just show a quiet empty state.
+        if (err.response?.status !== 404) {
+          setPeakHoursError("Couldn't load peak-hour analysis.");
+        }
+      });
   };
 
   // Merge per-zone trend points into a single chart-friendly series when "All zones" is
@@ -269,7 +292,7 @@ export default function Analytics() {
   return (
     <div className="min-h-screen bg-console-bg">
       <NavBar />
-      <div className="max-w-6xl mx-auto px-6 py-8">
+      <div className="max-w-6xl mx-auto px-6 py-8 animate-fade-in">
         <div className="mb-6 flex items-start justify-between flex-wrap gap-3">
           <div>
             <h2 className="font-display font-bold text-xl text-console-text">Analytics & Insights</h2>
@@ -289,18 +312,24 @@ export default function Analytics() {
 
         {/* Summary cards */}
         <div className="grid grid-cols-2 md:grid-cols-5 gap-4 mb-6">
-          <SummaryCard label="Zones" value={summary?.total_zones ?? "—"} />
-          <SummaryCard
-            label="Active Incidents"
-            value={summary?.active_incidents ?? "—"}
-            accent={summary?.active_incidents > 0 ? "text-signal-severe" : undefined}
-          />
-          <SummaryCard label="Predictions (24h)" value={summary?.total_predictions_24h ?? "—"} />
-          <SummaryCard
-            label="Avg Speed"
-            value={summary?.city_avg_speed_kmph ? `${summary.city_avg_speed_kmph} km/h` : "—"}
-          />
-          <SummaryCard label="Busiest Zone" value={summary?.busiest_zone ?? "None"} small />
+          {loading ? (
+            Array.from({ length: 5 }).map((_, i) => <SkeletonSummaryCard key={i} />)
+          ) : (
+            <>
+              <SummaryCard label="Zones" value={summary?.total_zones ?? "—"} />
+              <SummaryCard
+                label="Active Incidents"
+                value={summary?.active_incidents ?? "—"}
+                accent={summary?.active_incidents > 0 ? "text-signal-severe" : undefined}
+              />
+              <SummaryCard label="Predictions (24h)" value={summary?.total_predictions_24h ?? "—"} />
+              <SummaryCard
+                label="Avg Speed"
+                value={summary?.city_avg_speed_kmph ? `${summary.city_avg_speed_kmph} km/h` : "—"}
+              />
+              <SummaryCard label="Busiest Zone" value={summary?.busiest_zone ?? "None"} small />
+            </>
+          )}
         </div>
 
         <div className="grid grid-cols-1 lg:grid-cols-3 gap-6 mb-6">
@@ -394,6 +423,53 @@ export default function Analytics() {
               </ResponsiveContainer>
             )}
           </div>
+        </div>
+
+        {/* Peak-Hour Forecasting & Pattern Analysis */}
+        <div className="bg-console-panel border border-console-border rounded-lg p-6 mb-6">
+          <h3 className="font-display font-semibold text-console-text text-sm mb-1 uppercase tracking-wide">
+            Peak-Hour Forecasting & Pattern Analysis
+          </h3>
+          <p className="text-console-muted text-xs font-body mb-4">
+            Computed from actual historical readings for {selectedZoneId ? "the selected zone" : "all zones"} (last 30 days) — not a fixed assumption.
+          </p>
+
+          {peakHoursError && (
+            <p className="text-signal-severe text-xs font-mono">{peakHoursError}</p>
+          )}
+
+          {!peakHours && !peakHoursError && (
+            <p className="text-console-muted text-sm font-body">
+              Not enough historical data yet — let the simulator run a while longer.
+            </p>
+          )}
+
+          {peakHours && (
+            <>
+              <p className="text-console-text text-sm font-body mb-4">{peakHours.summary}</p>
+              <div className="grid grid-cols-12 gap-1">
+                {peakHours.hourly_pattern.map((p) => {
+                  const heightPct = Math.max(8, (p.avg_congestion_score / 3) * 100);
+                  return (
+                    <div key={p.hour} className="flex flex-col items-center gap-1" title={`${p.hour}:00 — avg score ${p.avg_congestion_score}`}>
+                      <div className="w-full h-16 flex items-end bg-console-bg/50 rounded-sm overflow-hidden">
+                        <div
+                          className={`w-full transition-all ${p.is_peak ? "bg-signal-severe" : "bg-accent/40"}`}
+                          style={{ height: `${heightPct}%` }}
+                        />
+                      </div>
+                      <span className={`text-[9px] font-mono ${p.is_peak ? "text-signal-severe" : "text-console-muted"}`}>
+                        {p.hour}
+                      </span>
+                    </div>
+                  );
+                })}
+              </div>
+              <p className="text-console-muted text-[10px] font-mono mt-3">
+                Bars in red are statistically above-average peak hours. Hover a bar for its exact score.
+              </p>
+            </>
+          )}
         </div>
 
         {/* Road Performance Tracking */}
@@ -566,6 +642,15 @@ function SummaryCard({ label, value, accent, small }) {
       >
         {value}
       </div>
+    </div>
+  );
+}
+
+function SkeletonSummaryCard() {
+  return (
+    <div className="bg-console-panel border border-console-border rounded-lg p-4">
+      <Skeleton className="h-2.5 w-16 mb-2" />
+      <Skeleton className="h-6 w-12" />
     </div>
   );
 }

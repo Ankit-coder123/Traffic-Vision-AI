@@ -1,9 +1,9 @@
 from typing import List
 
-from fastapi import APIRouter, Depends, HTTPException
+from fastapi import APIRouter, BackgroundTasks, Depends, HTTPException
 from sqlalchemy.orm import Session
 
-from app import models, schemas, security
+from app import email_utils, models, schemas, security
 from app.database import get_db
 
 router = APIRouter(prefix="/incidents", tags=["Incident Reports"])
@@ -26,6 +26,7 @@ def _to_out(incident: models.IncidentReport) -> schemas.IncidentReportOut:
 @router.post("", response_model=schemas.IncidentReportOut, status_code=201)
 def report_incident(
     payload: schemas.IncidentReportCreate,
+    background_tasks: BackgroundTasks,
     db: Session = Depends(get_db),
     current_user: models.User = Depends(security.require_operator_or_admin),
 ):
@@ -51,6 +52,21 @@ def report_incident(
     db.add(incident)
     db.commit()
     db.refresh(incident)
+
+    # Broadcast to every registered user -- best-effort, runs AFTER the
+    # response is sent so a slow/failed email never delays this request.
+    # Silently skipped entirely if SMTP isn't configured (see email_utils.py).
+    if email_utils.is_configured():
+        recipient_emails = [u.email for u in db.query(models.User.email).all()]
+        background_tasks.add_task(
+            email_utils.send_incident_alert_email,
+            recipient_emails=recipient_emails,
+            zone_name=zone.name,
+            incident_type=incident.incident_type.value if hasattr(incident.incident_type, "value") else incident.incident_type,
+            severity=incident.severity.value if hasattr(incident.severity, "value") else incident.severity,
+            description=incident.description,
+        )
+
     return _to_out(incident)
 
 

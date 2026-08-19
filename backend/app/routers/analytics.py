@@ -379,3 +379,210 @@ def dismiss_congestion_alert(
         dismissed_at=dismissal.dismissed_at,
         expires_at=dismissal.expires_at,
     )
+
+
+DAY_NAMES = ["Monday", "Tuesday", "Wednesday", "Thursday", "Friday", "Saturday", "Sunday"]
+
+
+@router.get("/peak-hours", response_model=schemas.PeakHourAnalysisOut)
+def get_peak_hour_analysis(
+    zone_id: Optional[int] = None,
+    days: int = Query(30, ge=1, le=365, description="How many days of history to analyze."),
+    db: Session = Depends(get_db),
+    current_user: models.User = Depends(security.get_current_user),
+):
+    """
+    Peak-hour forecasting & pattern analysis, computed empirically from
+    actual historical readings rather than a hardcoded "rush hour is
+    7-9am/5-8pm" assumption. Groups every reading in the lookback window
+    by hour-of-day (0-23) and by day-of-week, averages the same
+    CONGESTION_SCORE used everywhere else in this file, and flags whichever
+    hours/days come out highest as "peak".
+
+    This is intentionally simple and explainable (a grouped average, not a
+    separate model) -- the trained RandomForest classifier already covers
+    "AI-based prediction" elsewhere (see /predict/congestion and
+    /analytics/recommendations); this endpoint answers a different
+    question ("when does congestion peak, based on what's actually
+    happened here?") that a live per-request model prediction can't.
+    """
+    zone = None
+    if zone_id is not None:
+        zone = db.query(models.TrafficZone).filter(models.TrafficZone.id == zone_id).first()
+        if not zone:
+            raise HTTPException(status_code=404, detail="Zone not found")
+
+    cutoff = datetime.utcnow() - timedelta(days=days)
+    query = db.query(models.TrafficData).filter(models.TrafficData.recorded_at >= cutoff)
+    if zone_id is not None:
+        query = query.filter(models.TrafficData.zone_id == zone_id)
+    readings = query.all()
+
+    if not readings:
+        raise HTTPException(
+            status_code=404,
+            detail="No traffic data in this time window yet -- run the simulator for a while first.",
+        )
+
+    hourly_scores = defaultdict(list)
+    daily_scores = defaultdict(list)
+    for r in readings:
+        score = CONGESTION_SCORE.get(_level_value(r.congestion_level), 0)
+        hourly_scores[r.recorded_at.hour].append(score)
+        daily_scores[r.recorded_at.weekday()].append(score)
+
+    hourly_avgs = {
+        hour: sum(scores) / len(scores) for hour, scores in hourly_scores.items()
+    }
+    daily_avgs = {
+        dow: sum(scores) / len(scores) for dow, scores in daily_scores.items()
+    }
+
+    # "Peak" = in the top 25% by rank AND meaningfully above the overall
+    # average -- rank alone isn't enough, since with many tied baseline
+    # hours (e.g. everything at score 1.0 except a couple of standout
+    # hours), a pure top-N-by-rank cutoff arbitrarily sweeps in ties that
+    # aren't actually distinctive. Requiring "> overall mean" too ensures
+    # only genuine standouts get flagged.
+    overall_hourly_mean = sum(hourly_avgs.values()) / len(hourly_avgs)
+    sorted_hours = sorted(hourly_avgs.items(), key=lambda x: x[1], reverse=True)
+    peak_hour_count = max(1, len(sorted_hours) // 4)
+    peak_hour_set = {
+        h for h, score in sorted_hours[:peak_hour_count] if score > overall_hourly_mean
+    }
+
+    overall_daily_mean = sum(daily_avgs.values()) / len(daily_avgs)
+    sorted_days = sorted(daily_avgs.items(), key=lambda x: x[1], reverse=True)
+    peak_day_count = max(1, len(sorted_days) // 4)
+    peak_day_set = {
+        d for d, score in sorted_days[:peak_day_count] if score > overall_daily_mean
+    }
+
+    hourly_pattern = [
+        schemas.HourlyPatternPoint(
+            hour=h,
+            avg_congestion_score=round(hourly_avgs.get(h, 0.0), 2),
+            sample_count=len(hourly_scores.get(h, [])),
+            is_peak=h in peak_hour_set,
+        )
+        for h in range(24)
+        if h in hourly_avgs   # only report hours that actually have data
+    ]
+    hourly_pattern.sort(key=lambda p: p.hour)
+
+    daily_pattern = [
+        schemas.DailyPatternPoint(
+            day_of_week=d,
+            day_name=DAY_NAMES[d],
+            avg_congestion_score=round(daily_avgs.get(d, 0.0), 2),
+            sample_count=len(daily_scores.get(d, [])),
+            is_peak=d in peak_day_set,
+        )
+        for d in range(7)
+        if d in daily_avgs
+    ]
+    daily_pattern.sort(key=lambda p: p.day_of_week)
+
+    peak_hours_list = sorted(peak_hour_set)
+    peak_days_list = [DAY_NAMES[d] for d in sorted(peak_day_set)]
+
+    scope = zone.name if zone else "across all zones"
+    if peak_hours_list:
+        hours_label = ", ".join(f"{h:02d}:00" for h in peak_hours_list)
+        day_clause = f", most notably on {', '.join(peak_days_list)}" if peak_days_list else ""
+        summary = (
+            f"Based on {len(readings)} readings over the last {days} day(s), "
+            f"congestion {scope} peaks around {hours_label}{day_clause}."
+        )
+    else:
+        summary = (
+            f"Based on {len(readings)} readings over the last {days} day(s), "
+            f"congestion {scope} is fairly uniform throughout the day -- "
+            f"no hour stands out significantly above the average."
+        )
+
+    return schemas.PeakHourAnalysisOut(
+        zone_id=zone_id,
+        zone_name=zone.name if zone else None,
+        lookback_days=days,
+        total_readings_analyzed=len(readings),
+        hourly_pattern=hourly_pattern,
+        daily_pattern=daily_pattern,
+        peak_hours=peak_hours_list,
+        peak_days=peak_days_list,
+        summary=summary,
+    )
+
+
+@router.get("/road-conditions", response_model=List[schemas.RoadConditionOut])
+def get_road_conditions(
+    db: Session = Depends(get_db),
+    current_user: models.User = Depends(security.get_current_user),
+):
+    """
+    Per-zone road condition status -- combines the latest live congestion
+    reading with any currently active incident into one clear status:
+      - 'closed'     an active road_closure incident on this zone
+      - 'impaired'   an active accident/construction/hazard/other incident
+                      (road is passable but degraded)
+      - 'congested'  no active incident, but latest reading is high/severe
+      - 'normal'     no active incident, latest reading is low/medium
+    Closure always outranks everything else; an incident outranks pure
+    congestion, since a reported real-world problem is more actionable
+    than "traffic is currently heavy".
+    """
+    zones = db.query(models.TrafficZone).all()
+
+    # One query for all active incidents rather than one query per zone.
+    active_incidents_by_zone = {}
+    active_incidents = (
+        db.query(models.IncidentReport)
+        .filter(models.IncidentReport.is_resolved == 0)
+        .all()
+    )
+    for inc in active_incidents:
+        # If a zone somehow has multiple active incidents, keep the most
+        # severe one (major > moderate > minor) for the status calculation.
+        existing = active_incidents_by_zone.get(inc.zone_id)
+        severity_rank = {"minor": 0, "moderate": 1, "major": 2}
+        inc_severity = _level_value(inc.severity)
+        if existing is None or severity_rank.get(inc_severity, 0) > severity_rank.get(_level_value(existing.severity), 0):
+            active_incidents_by_zone[inc.zone_id] = inc
+
+    results = []
+    for zone in zones:
+        latest = (
+            db.query(models.TrafficData)
+            .filter(models.TrafficData.zone_id == zone.id)
+            .order_by(models.TrafficData.recorded_at.desc())
+            .first()
+        )
+        incident = active_incidents_by_zone.get(zone.id)
+        congestion_level = _level_value(latest.congestion_level) if latest else None
+
+        if incident and _level_value(incident.incident_type) == "road_closure":
+            status = "closed"
+        elif incident:
+            status = "impaired"
+        elif congestion_level in ("high", "severe"):
+            status = "congested"
+        else:
+            status = "normal"
+
+        results.append(
+            schemas.RoadConditionOut(
+                zone_id=zone.id,
+                zone_name=zone.name,
+                road_type=zone.road_type,
+                status=status,
+                congestion_level=congestion_level,
+                active_incident_type=_level_value(incident.incident_type) if incident else None,
+                active_incident_severity=_level_value(incident.severity) if incident else None,
+                last_updated=latest.recorded_at if latest else None,
+            )
+        )
+
+    # Worst-first ordering so the most actionable zones surface at the top.
+    status_rank = {"closed": 0, "impaired": 1, "congested": 2, "normal": 3}
+    results.sort(key=lambda r: status_rank.get(r.status, 4))
+    return results

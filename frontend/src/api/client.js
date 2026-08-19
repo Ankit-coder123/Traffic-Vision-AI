@@ -1,6 +1,8 @@
 import axios from "axios";
 
-const API_BASE_URL = "http://localhost:8000";
+// Falls back to localhost for local/Docker dev -- set VITE_API_BASE_URL at
+// build time to point this at a deployed backend (e.g. Render).
+const API_BASE_URL = import.meta.env.VITE_API_BASE_URL || "http://localhost:8000";
 
 const client = axios.create({
   baseURL: API_BASE_URL,
@@ -39,7 +41,9 @@ export const authApi = {
   },
   signup: (name, email, password, role = "user") =>
     client.post("/auth/signup", { name, email, password, role }),
+  googleLogin: (credential) => client.post("/auth/google", { credential }),
   me: () => client.get("/auth/me"),
+  updateProfile: (payload) => client.patch("/auth/me", payload),
 };
 
 export const trafficApi = {
@@ -75,6 +79,9 @@ export const analyticsApi = {
   dismissRecommendation: (zoneId, minutes = 30) =>
     client.post(`/analytics/recommendations/${zoneId}/dismiss?minutes=${minutes}`),
   getRoadPerformance: (hours = 24) => client.get(`/analytics/road-performance?hours=${hours}`),
+  getPeakHours: (zoneId = null, days = 30) =>
+    client.get(`/analytics/peak-hours?days=${days}${zoneId ? `&zone_id=${zoneId}` : ""}`),
+  getRoadConditions: () => client.get("/analytics/road-conditions"),
 };
 
 export default client;

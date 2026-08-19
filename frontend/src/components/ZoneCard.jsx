@@ -21,12 +21,15 @@ const LEVEL_CONFIG = {
   },
 };
 
-export default function ZoneCard({ zoneName, reading }) {
+export default function ZoneCard({ zoneName, reading, index = 0 }) {
   const level = reading?.congestion_level || "low";
   const config = LEVEL_CONFIG[level] || LEVEL_CONFIG.low;
 
   return (
-    <div className="bg-console-panel border border-console-border rounded-lg p-4 hover:border-console-border/80 transition-colors">
+    <div
+      className="bg-console-panel border border-console-border rounded-lg p-4 animate-fade-in transition-all duration-200 hover:-translate-y-0.5 hover:border-console-border/80 hover:shadow-lg hover:shadow-black/20"
+      style={{ animationDelay: `${Math.min(index, 12) * 40}ms`, animationFillMode: "backwards" }}
+    >
       <div className="flex items-start justify-between mb-3">
         <h3 className="font-display font-semibold text-console-text text-sm leading-tight pr-2">
           {zoneName}

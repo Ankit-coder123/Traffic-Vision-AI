@@ -1,6 +1,7 @@
 import { useState } from "react";
 import { useNavigate, Link } from "react-router-dom";
 import { useAuth } from "../context/AuthContext";
+import GoogleSignInButton from "../components/GoogleSignInButton";
 
 const STRENGTH_LEVELS = [
   { label: "Very Weak", color: "bg-signal-severe", text: "text-signal-severe" },
@@ -63,7 +64,7 @@ export default function Signup() {
 
   return (
     <div className="min-h-screen bg-console-bg flex items-center justify-center px-4">
-      <div className="w-full max-w-sm">
+      <div className="w-full max-w-sm animate-fade-in">
         <div className="mb-8 text-center">
           <div className="inline-flex items-center gap-2 mb-3">
             <span className="w-2 h-2 rounded-full bg-signal-low live-pulse" />
@@ -204,11 +205,22 @@ export default function Signup() {
           <button
             type="submit"
             disabled={submitting}
-            className="w-full bg-accent text-console-bg font-display font-semibold rounded py-2.5 text-sm tracking-wide hover:bg-accent/90 disabled:opacity-50 disabled:cursor-not-allowed transition-colors"
+            className="w-full flex items-center justify-center gap-2 bg-accent text-console-bg font-display font-semibold rounded py-2.5 text-sm tracking-wide hover:bg-accent/90 active:scale-[0.98] disabled:opacity-50 disabled:active:scale-100 disabled:cursor-not-allowed transition"
           >
+            {submitting && (
+              <svg className="animate-spin h-4 w-4" viewBox="0 0 24 24" fill="none">
+                <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4" />
+                <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8v4a4 4 0 00-4 4H4z" />
+              </svg>
+            )}
             {submitting ? "Creating account..." : "Create Account"}
           </button>
         </form>
+
+        <GoogleSignInButton
+          onError={setError}
+          note="Google sign-in always creates a Public User account (upgrade to Traffic Operator later isn't self-service)."
+        />
 
         <p className="text-center text-console-muted text-xs mt-5 font-body">
           Already have an account?{" "}

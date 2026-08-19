@@ -7,6 +7,14 @@ COPY package*.json ./
 RUN npm install
 
 COPY . .
+
+# Optional -- Google Sign-In client ID. Vite only bakes in env vars present
+# at BUILD time (not read at container runtime), so this has to arrive as
+# a build ARG from docker-compose.yml, then get exported as an env var
+# Vite's build step can actually see.
+ARG VITE_GOOGLE_CLIENT_ID=""
+ENV VITE_GOOGLE_CLIENT_ID=$VITE_GOOGLE_CLIENT_ID
+
 RUN npm run build
 
 # --- Serve stage ---
