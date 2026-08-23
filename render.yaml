@@ -1,7 +1,12 @@
-# Render Blueprint -- defines the whole TrafficVision AI stack as Render
-# services, mirroring docker-compose.yml's 4 services (db, backend,
-# frontend, simulator). Render doesn't run docker-compose.yml directly;
-# this file is Render's equivalent.
+# Render Blueprint -- defines the TrafficVision AI stack as Render
+# services. Render doesn't run docker-compose.yml directly; this file is
+# Render's equivalent, with one deliberate difference: the simulator runs
+# as a background thread inside trafficvision-backend (see main.py)
+# rather than its own service, because Render's free plan only offers Web
+# Services and Static Sites -- Background Worker services require a paid
+# plan. docker-compose.yml is unaffected and still runs the simulator as
+# its own container for local dev; both are valid, this just fits free
+# hosting.
 #
 # The frontend is deployed as a Render Static Site rather than reusing
 # frontend/Dockerfile's nginx container -- Render's static sites are free,
@@ -56,6 +61,18 @@ services:
         sync: false
       - key: SMTP_FROM_NAME
         value: TrafficVision AI
+      # --- Simulator (runs as a background thread inside this same
+      # service -- see main.py's startup event. Render's free plan has no
+      # Background Worker service type, only Web Services and Static
+      # Sites, so this replaces what would otherwise be a separate
+      # trafficvision-simulator worker. ---
+      - key: RUN_SIMULATOR
+        value: "true"
+      - key: SIMULATOR_ADMIN_EMAIL
+        sync: false  # a real email you control -- the @trafficvision.ai placeholder domain
+                     # isn't deliverable and will bounce every incident report once SMTP_* is set
+      - key: SIMULATOR_ADMIN_PASSWORD
+        generateValue: true
 
   # --- Frontend (Render Static Site -- free, no spin-down, no nginx needed) ---
   - type: web
@@ -75,20 +92,3 @@ services:
       - type: rewrite
         source: /*
         destination: /index.html
-
-  # --- Simulator (background worker, no public URL needed) ---
-  - type: worker
-    name: trafficvision-simulator
-    runtime: docker
-    dockerfilePath: ./backend/Dockerfile
-    dockerContext: ./backend
-    dockerCommand: python simulator.py
-    plan: free
-    envVars:
-      - key: API_BASE_URL
-        value: https://trafficvision-backend.onrender.com  # update if your backend name differs
-      - key: SIMULATOR_ADMIN_EMAIL
-        sync: false  # a real email you control -- the @trafficvision.ai placeholder domain
-                     # isn't deliverable and will bounce every incident report once SMTP_* is set
-      - key: SIMULATOR_ADMIN_PASSWORD
-        generateValue: true
