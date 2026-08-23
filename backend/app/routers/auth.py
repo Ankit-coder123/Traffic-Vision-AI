@@ -1,11 +1,18 @@
+import os
 import secrets
+from datetime import datetime, timedelta
 
-from fastapi import APIRouter, Depends, HTTPException, status
+from fastapi import APIRouter, BackgroundTasks, Depends, HTTPException, status
 from fastapi.security import OAuth2PasswordRequestForm
 from sqlalchemy.orm import Session
 
-from app import models, schemas, security
+from app import email_utils, models, schemas, security
 from app.database import get_db
+
+# Where the frontend's reset-password page lives -- same env var main.py
+# already uses for CORS, so no new configuration is needed. Falls back to
+# the local Vite dev server address.
+FRONTEND_URL = os.getenv("FRONTEND_URL", "http://localhost:5173")
 
 router = APIRouter(prefix="/auth", tags=["Authentication"])
 
@@ -91,6 +98,79 @@ def google_login(payload: schemas.GoogleAuthRequest, db: Session = Depends(get_d
 
     access_token = security.create_access_token(data={"sub": str(user.id)})
     return {"access_token": access_token, "token_type": "bearer"}
+
+
+@router.post("/forgot-password", response_model=schemas.MessageResponse)
+def forgot_password(
+    payload: schemas.ForgotPasswordRequest,
+    background_tasks: BackgroundTasks,
+    db: Session = Depends(get_db),
+):
+    """
+    Requests a password reset email. Always returns the same generic
+    message whether or not the email is registered -- responding
+    differently would let anyone probe which emails have accounts, and
+    the actual email send is best-effort via a background task, same
+    pattern as incident alert emails.
+    """
+    generic_response = {
+        "message": "If an account exists for that email, a password reset link has been sent."
+    }
+
+    user = db.query(models.User).filter(models.User.email == payload.email).first()
+    if not user:
+        return generic_response
+
+    raw_token, token_hash = security.generate_password_reset_token()
+    reset_token = models.PasswordResetToken(
+        user_id=user.id,
+        token_hash=token_hash,
+        expires_at=datetime.utcnow()
+        + timedelta(minutes=security.PASSWORD_RESET_TOKEN_EXPIRE_MINUTES),
+    )
+    db.add(reset_token)
+    db.commit()
+
+    reset_link = f"{FRONTEND_URL}/reset-password?token={raw_token}"
+    background_tasks.add_task(
+        email_utils.send_password_reset_email, user.email, reset_link
+    )
+
+    return generic_response
+
+
+@router.post("/reset-password", response_model=schemas.MessageResponse)
+def reset_password(payload: schemas.ResetPasswordRequest, db: Session = Depends(get_db)):
+    """Consumes a reset token from the emailed link and sets a new password."""
+    if len(payload.new_password) < 8:
+        raise HTTPException(status_code=422, detail="New password must be at least 8 characters")
+
+    token_hash = security.hash_reset_token(payload.token)
+    reset_token = (
+        db.query(models.PasswordResetToken)
+        .filter(models.PasswordResetToken.token_hash == token_hash)
+        .first()
+    )
+
+    if (
+        not reset_token
+        or reset_token.used_at is not None
+        or reset_token.expires_at < datetime.utcnow()
+    ):
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="This reset link is invalid or has expired. Please request a new one.",
+        )
+
+    user = db.query(models.User).filter(models.User.id == reset_token.user_id).first()
+    if not user:
+        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="Invalid reset link")
+
+    user.password_hash = security.hash_password(payload.new_password)
+    reset_token.used_at = datetime.utcnow()
+    db.commit()
+
+    return {"message": "Your password has been reset. You can now sign in."}
 
 
 @router.get("/me", response_model=schemas.UserOut)

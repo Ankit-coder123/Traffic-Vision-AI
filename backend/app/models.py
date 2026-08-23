@@ -133,6 +133,30 @@ class AlertDismissal(Base):
     zone = relationship("TrafficZone")
 
 
+class PasswordResetToken(Base):
+    """A single-use, short-lived token for the 'forgot password' flow.
+
+    Kept as its own table rather than columns on User, for the same reason
+    given in auth.py's docstring: create_all() can't alter an
+    already-existing table, but it happily creates a brand new one. We
+    store a SHA-256 hash of the token (not the raw token, and not run
+    through bcrypt -- the token itself already has 256 bits of entropy
+    from secrets.token_urlsafe, so a slow password-hashing algorithm buys
+    nothing here and would just slow down every reset-link click). The raw
+    token only ever exists in the emailed link and briefly in memory.
+    """
+    __tablename__ = "password_reset_tokens"
+
+    id = Column(Integer, primary_key=True, index=True)
+    user_id = Column(Integer, ForeignKey("users.id"), nullable=False, index=True)
+    token_hash = Column(String, unique=True, index=True, nullable=False)
+    expires_at = Column(DateTime, nullable=False, index=True)
+    used_at = Column(DateTime, nullable=True)
+    created_at = Column(DateTime, default=datetime.utcnow)
+
+    user = relationship("User")
+
+
 class SavedRoute(Base):
     """A user's personally saved origin/destination pair for quick re-use
     on the Routes page -- available to every role, but framed as primarily

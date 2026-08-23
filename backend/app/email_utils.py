@@ -134,3 +134,51 @@ def send_incident_alert_email(
         print(f"[email_utils] Failed for: {failed}")
 
     return sent_count > 0
+
+
+def send_password_reset_email(recipient_email: str, reset_link: str) -> bool:
+    """
+    Sends a single password-reset email with a link containing the raw
+    reset token as a query param. Same no-op-if-unconfigured behavior as
+    send_incident_alert_email -- if SMTP isn't set up, this just returns
+    False rather than raising, so local dev without email configured
+    doesn't break (the forgot-password endpoint always returns a generic
+    success message regardless, so this failing silently doesn't leak
+    anything either).
+    """
+    if not is_configured():
+        return False
+
+    subject = "[TrafficVision AI] Reset your password"
+    text_body = (
+        "We received a request to reset your TrafficVision AI password.\n\n"
+        f"Reset it here: {reset_link}\n\n"
+        "This link expires in 30 minutes. If you didn't request this, "
+        "you can safely ignore this email -- your password won't change."
+    )
+    html_body = f"""
+    <div style="font-family: sans-serif; max-width: 480px;">
+      <h2 style="margin-bottom: 4px;">Reset your password</h2>
+      <p style="color: #555; margin-top: 0;">TrafficVision AI</p>
+      <p>We received a request to reset your password. This link expires in 30 minutes.</p>
+      <p style="margin: 20px 0;">
+        <a href="{reset_link}" style="background: #111; color: #fff; padding: 10px 18px; border-radius: 6px; text-decoration: none;">
+          Reset password
+        </a>
+      </p>
+      <p style="color: #888; font-size: 13px;">
+        If you didn't request this, you can safely ignore this email -- your password won't change.
+      </p>
+    </div>
+    """
+
+    try:
+        context = ssl.create_default_context()
+        with smtplib.SMTP_SSL(SMTP_HOST, SMTP_PORT, context=context) as server:
+            server.login(SMTP_USER, SMTP_PASSWORD)
+            msg = _build_message(recipient_email, subject, html_body, text_body)
+            refused = server.sendmail(SMTP_USER, [recipient_email], msg.as_string())
+            return not refused
+    except Exception as e:
+        print(f"[email_utils] Failed to send password reset email: {e}")
+        return False

@@ -44,6 +44,19 @@ class GoogleAuthRequest(BaseModel):
     credential: str   # the ID token JWT returned by Google Identity Services
 
 
+class ForgotPasswordRequest(BaseModel):
+    email: EmailStr
+
+
+class ResetPasswordRequest(BaseModel):
+    token: str
+    new_password: str
+
+
+class MessageResponse(BaseModel):
+    message: str
+
+
 # ---------- Traffic Zones ----------
 
 class TrafficZoneCreate(BaseModel):

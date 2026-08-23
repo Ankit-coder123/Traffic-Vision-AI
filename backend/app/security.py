@@ -1,6 +1,8 @@
 from datetime import datetime, timedelta
 from typing import Optional
+import hashlib
 import os
+import secrets
 
 from fastapi import Depends, HTTPException, status
 from fastapi.security import OAuth2PasswordBearer
@@ -121,3 +123,22 @@ def verify_google_token(credential: str) -> dict:
         )
 
     return claims
+
+
+# --- Password reset ---
+PASSWORD_RESET_TOKEN_EXPIRE_MINUTES = 30
+
+
+def generate_password_reset_token() -> tuple[str, str]:
+    """Returns (raw_token, token_hash). The raw token goes in the emailed
+    link and is never stored; only its SHA-256 hash is saved, same idea as
+    never storing a plaintext password."""
+    raw_token = secrets.token_urlsafe(32)
+    token_hash = hashlib.sha256(raw_token.encode()).hexdigest()
+    return raw_token, token_hash
+
+
+def hash_reset_token(raw_token: str) -> str:
+    """Hashes an incoming raw token from a reset link the same way, so it
+    can be looked up by token_hash."""
+    return hashlib.sha256(raw_token.encode()).hexdigest()

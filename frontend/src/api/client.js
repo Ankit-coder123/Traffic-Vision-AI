@@ -42,6 +42,9 @@ export const authApi = {
   signup: (name, email, password, role = "user") =>
     client.post("/auth/signup", { name, email, password, role }),
   googleLogin: (credential) => client.post("/auth/google", { credential }),
+  forgotPassword: (email) => client.post("/auth/forgot-password", { email }),
+  resetPassword: (token, newPassword) =>
+    client.post("/auth/reset-password", { token, new_password: newPassword }),
   me: () => client.get("/auth/me"),
   updateProfile: (payload) => client.patch("/auth/me", payload),
 };

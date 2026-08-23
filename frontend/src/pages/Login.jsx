@@ -73,8 +73,16 @@ export default function Login() {
           </label>
 
           <label className="block mb-6">
-            <span className="block text-xs font-mono text-console-muted uppercase tracking-wide mb-1.5">
-              Password
+            <span className="flex items-center justify-between mb-1.5">
+              <span className="text-xs font-mono text-console-muted uppercase tracking-wide">
+                Password
+              </span>
+              <Link
+                to="/forgot-password"
+                className="text-xs text-accent hover:underline font-body normal-case"
+              >
+                Forgot password?
+              </Link>
             </span>
             <input
               type="password"

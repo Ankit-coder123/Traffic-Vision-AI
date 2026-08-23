@@ -48,7 +48,7 @@ services:
       SMTP_HOST: smtp.gmail.com
       SMTP_PORT: 465
       SMTP_USER: ankitchaudhary300504@gmail.com
-      SMTP_PASSWORD: cozg ognc sxzd xqyp
+      SMTP_PASSWORD: eaha hurm knla atti
       SMTP_FROM_NAME: TrafficVision AI
     ports:
       - "8000:8000"
@@ -87,8 +87,7 @@ services:
       # root-level .env file (same one used for GOOGLE_CLIENT_ID/SMTP_*)
       # with a real email you control.
       SIMULATOR_ADMIN_EMAIL: ankitchaudhary300504@gmail.com
-      SIMULATOR_ADMIN_PASSWORD: admin123
+      SIMULATOR_ADMIN_PASSWORD: admin123}
 
 volumes:
   pgdata:
-  
