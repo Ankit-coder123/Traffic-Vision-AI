@@ -31,7 +31,7 @@ API_BASE_URL = os.getenv("API_BASE_URL", "http://localhost:8000")
 # unset means alerts are skipped entirely), but if you DO turn on email
 # alerts, this placeholder account will always bounce. Override both of
 # these in backend/.env with a real email you control to avoid that.
-ADMIN_EMAIL = os.getenv("SIMULATOR_ADMIN_EMAIL", "admin@trafficvision.ai")
+ADMIN_EMAIL = os.getenv("SIMULATOR_ADMIN_EMAIL", "ankitchaudhary300504@gmail.com")
 ADMIN_PASSWORD = os.getenv("SIMULATOR_ADMIN_PASSWORD", "admin123")
 
 # Seed zones - realistic Indian city road names as an example
