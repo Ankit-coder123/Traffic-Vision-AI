@@ -1,8 +1,6 @@
 import { useEffect, useState } from "react";
 import { incidentsApi, trafficApi } from "../api/client";
 import { useAuth } from "../context/AuthContext";
-import NavBar from "../components/NavBar";
-import { Skeleton } from "../components/Skeleton";
 
 const INCIDENT_TYPES = [
   { value: "accident", label: "Accident" },
@@ -12,260 +10,288 @@ const INCIDENT_TYPES = [
   { value: "other", label: "Other" },
 ];
 
-const SEVERITY_STYLES = {
-  minor: "bg-signal-medium/10 text-signal-medium border-signal-medium/30",
-  moderate: "bg-signal-high/10 text-signal-high border-signal-high/30",
-  major: "bg-signal-severe/10 text-signal-severe border-signal-severe/30",
+const SEVERITIES = [
+  { value: "minor", label: "Minor" },
+  { value: "moderate", label: "Moderate" },
+  { value: "major", label: "Major" },
+];
+
+const SEVERITY_BADGE = {
+  minor: "border-signal-low/40 bg-signal-low/10 text-signal-low",
+  moderate: "border-signal-medium/40 bg-signal-medium/10 text-signal-medium",
+  major: "border-signal-severe/40 bg-signal-severe/10 text-signal-severe",
 };
 
 export default function Incidents() {
   const { user } = useAuth();
   const canReport = user?.role === "admin" || user?.role === "operator";
 
-  const [zones, setZones] = useState([]);
   const [incidents, setIncidents] = useState([]);
+  const [zones, setZones] = useState([]);
+  const [loading, setLoading] = useState(true);
+  const [activeOnly, setActiveOnly] = useState(false);
+  const [submitting, setSubmitting] = useState(false);
+  const [error, setError] = useState(null);
+
   const [form, setForm] = useState({
     zone_id: "",
     incident_type: "accident",
     severity: "minor",
     description: "",
   });
-  const [submitting, setSubmitting] = useState(false);
-  const [error, setError] = useState("");
-  const [incidentsLoading, setIncidentsLoading] = useState(true);
+
+  const loadData = async () => {
+    try {
+      const [incRes, zoneRes] = await Promise.all([
+        incidentsApi.list(activeOnly),
+        trafficApi.listZones(),
+      ]);
+      setIncidents(incRes.data || []);
+      setZones(zoneRes.data || []);
+    } catch (err) {
+      console.error("Failed to load incidents:", err);
+      setError("Failed to load data");
+    } finally {
+      setLoading(false);
+    }
+  };
 
   useEffect(() => {
-    trafficApi.getZones().then((res) => setZones(res.data)).catch(() => {});
-    incidentsApi
-      .list(true)
-      .then((res) => setIncidents(res.data))
-      .catch(() => {})
-      .finally(() => setIncidentsLoading(false));
-  }, []);
-
-  const loadIncidents = () => {
-    incidentsApi
-      .list(true)
-      .then((res) => setIncidents(res.data))
-      .catch(() => {});
-  };
+    loadData();
+  }, [activeOnly]);
 
   const handleSubmit = async (e) => {
     e.preventDefault();
-    setError("");
-    if (!form.zone_id) {
-      setError("Select a zone.");
-      return;
-    }
+    if (!form.zone_id) return;
     setSubmitting(true);
+    setError(null);
     try {
-      await incidentsApi.report({
-        zone_id: Number(form.zone_id),
+      await incidentsApi.create({
+        zone_id: parseInt(form.zone_id, 10),
         incident_type: form.incident_type,
         severity: form.severity,
         description: form.description || null,
       });
-      setForm((prev) => ({ ...prev, description: "" }));
-      loadIncidents();
+      setForm({
+        zone_id: "",
+        incident_type: "accident",
+        severity: "minor",
+        description: "",
+      });
+      await loadData();
     } catch (err) {
-      setError(err.response?.data?.detail ? String(err.response.data.detail) : "Failed to report incident.");
+      setError(err.response?.data?.detail || "Failed to create incident report");
     } finally {
       setSubmitting(false);
     }
   };
 
-  const handleResolve = async (id) => {
+  const handleResolve = async (id, currentResolvedState) => {
     try {
-      await incidentsApi.resolve(id);
-      loadIncidents();
+      await incidentsApi.resolve(id, !currentResolvedState);
+      await loadData();
     } catch (err) {
-      // no-op -- list simply won't update if this fails
+      alert(err.response?.data?.detail || "Failed to update incident status");
     }
   };
 
   return (
-    <div className="min-h-screen bg-console-bg">
-      <NavBar />
-      <div className="max-w-6xl mx-auto px-6 py-8 animate-fade-in">
-        <div className="mb-6">
-          <h2 className="font-display font-bold text-xl text-console-text">Incidents</h2>
-          <p className="text-console-muted text-sm font-mono mt-1">
-            {canReport
-              ? "Report and track real-world incidents across the Bangalore network"
-              : "Active incidents currently affecting the Bangalore network"}
-          </p>
-        </div>
+    <div className="space-y-6">
+      <div>
+        <h1 className="text-2xl font-display font-bold text-console-text">
+          Incidents
+        </h1>
+        <p className="text-xs text-console-muted font-mono mt-1">
+          Report and track traffic disruptions across monitoring zones.
+        </p>
+      </div>
 
-        <div className={`grid grid-cols-1 ${canReport ? "lg:grid-cols-3" : ""} gap-6`}>
-          {canReport && (
-            <form
-              onSubmit={handleSubmit}
-              className="lg:col-span-1 bg-console-panel border border-console-border rounded-lg p-6 h-fit"
-            >
-              <h3 className="font-display font-semibold text-console-text text-sm mb-4 uppercase tracking-wide">
-                Report Incident
-              </h3>
-
-              <label className="block mb-4">
-                <span className="block text-xs font-mono text-console-muted uppercase tracking-wide mb-1.5">
-                  Zone
-                </span>
-                <select
-                  value={form.zone_id}
-                  onChange={(e) => setForm((p) => ({ ...p, zone_id: e.target.value }))}
-                  className="w-full bg-console-bg border border-console-border rounded px-3 py-2.5 text-console-text focus:outline-none focus:ring-2 focus:ring-accent/50 focus:border-accent font-body text-sm"
-                >
-                  <option value="">Select zone</option>
-                  {zones.map((z) => (
-                    <option key={z.id} value={z.id}>
-                      {z.name}
-                    </option>
-                  ))}
-                </select>
+      {canReport && (
+        <div className="bg-console-panel border border-console-border rounded-lg p-5">
+          <h2 className="text-sm font-display font-semibold text-console-text mb-4 uppercase tracking-wider">
+            Report Incident
+          </h2>
+          {error && (
+            <div className="mb-4 p-3 rounded bg-signal-severe/10 border border-signal-severe/30 text-xs text-signal-severe">
+              {error}
+            </div>
+          )}
+          <form onSubmit={handleSubmit} className="grid grid-cols-1 md:grid-cols-4 gap-4">
+            <div>
+              <label className="block text-xs font-mono text-console-muted mb-1">
+                Zone
               </label>
+              <select
+                value={form.zone_id}
+                onChange={(e) => setForm({ ...form, zone_id: e.target.value })}
+                required
+                className="w-full bg-console-bg border border-console-border rounded px-3 py-2 text-xs text-console-text focus:outline-none focus:border-accent"
+              >
+                <option value="">Select Zone</option>
+                {zones.map((z) => (
+                  <option key={z.id} value={z.id}>
+                    {z.name}
+                  </option>
+                ))}
+              </select>
+            </div>
 
-              <label className="block mb-4">
-                <span className="block text-xs font-mono text-console-muted uppercase tracking-wide mb-1.5">
-                  Type
-                </span>
-                <select
-                  value={form.incident_type}
-                  onChange={(e) => setForm((p) => ({ ...p, incident_type: e.target.value }))}
-                  className="w-full bg-console-bg border border-console-border rounded px-3 py-2.5 text-console-text focus:outline-none focus:ring-2 focus:ring-accent/50 focus:border-accent font-body text-sm"
-                >
-                  {INCIDENT_TYPES.map((t) => (
-                    <option key={t.value} value={t.value}>
-                      {t.label}
-                    </option>
-                  ))}
-                </select>
+            <div>
+              <label className="block text-xs font-mono text-console-muted mb-1">
+                Type
               </label>
+              <select
+                value={form.incident_type}
+                onChange={(e) => setForm({ ...form, incident_type: e.target.value })}
+                className="w-full bg-console-bg border border-console-border rounded px-3 py-2 text-xs text-console-text focus:outline-none focus:border-accent"
+              >
+                {INCIDENT_TYPES.map((t) => (
+                  <option key={t.value} value={t.value}>
+                    {t.label}
+                  </option>
+                ))}
+              </select>
+            </div>
 
-              <div className="mb-4">
-                <span className="block text-xs font-mono text-console-muted uppercase tracking-wide mb-1.5">
-                  Severity
-                </span>
-                <div className="grid grid-cols-3 gap-2">
-                  {["minor", "moderate", "major"].map((s) => (
-                    <button
-                      key={s}
-                      type="button"
-                      onClick={() => setForm((p) => ({ ...p, severity: s }))}
-                      className={`px-2 py-2 rounded border text-xs font-mono uppercase tracking-wide transition-colors ${
-                        form.severity === s
-                          ? SEVERITY_STYLES[s]
-                          : "border-console-border text-console-muted hover:text-console-text"
-                      }`}
-                    >
-                      {s}
-                    </button>
-                  ))}
-                </div>
-              </div>
-
-              <label className="block mb-4">
-                <span className="block text-xs font-mono text-console-muted uppercase tracking-wide mb-1.5">
-                  Description (optional)
-                </span>
-                <textarea
-                  value={form.description}
-                  onChange={(e) => setForm((p) => ({ ...p, description: e.target.value }))}
-                  placeholder="Brief details..."
-                  rows={3}
-                  className="w-full bg-console-bg border border-console-border rounded px-3 py-2.5 text-console-text placeholder:text-console-muted/50 focus:outline-none focus:ring-2 focus:ring-accent/50 focus:border-accent font-body text-sm resize-none"
-                />
+            <div>
+              <label className="block text-xs font-mono text-console-muted mb-1">
+                Severity
               </label>
+              <select
+                value={form.severity}
+                onChange={(e) => setForm({ ...form, severity: e.target.value })}
+                className="w-full bg-console-bg border border-console-border rounded px-3 py-2 text-xs text-console-text focus:outline-none focus:border-accent"
+              >
+                {SEVERITIES.map((s) => (
+                  <option key={s.value} value={s.value}>
+                    {s.label}
+                  </option>
+                ))}
+              </select>
+            </div>
 
-              {error && (
-                <div className="mb-4 px-3 py-2 rounded bg-signal-severe/10 border border-signal-severe/30 text-signal-severe text-sm font-body">
-                  {error}
-                </div>
-              )}
+            <div>
+              <label className="block text-xs font-mono text-console-muted mb-1">
+                Description (Optional)
+              </label>
+              <input
+                type="text"
+                placeholder="e.g. 2-car collision"
+                value={form.description}
+                onChange={(e) => setForm({ ...form, description: e.target.value })}
+                className="w-full bg-console-bg border border-console-border rounded px-3 py-2 text-xs text-console-text focus:outline-none focus:border-accent"
+              />
+            </div>
 
+            <div className="md:col-span-4 flex justify-end">
               <button
                 type="submit"
                 disabled={submitting}
-                className="w-full bg-accent text-console-bg font-display font-semibold rounded py-2.5 text-sm tracking-wide hover:bg-accent/90 active:scale-[0.98] disabled:opacity-50 disabled:active:scale-100 transition"
+                className="px-5 py-2 rounded bg-accent text-white font-mono text-xs font-semibold hover:bg-accent/80 transition disabled:opacity-50"
               >
                 {submitting ? "Reporting..." : "Report Incident"}
               </button>
-            </form>
-          )}
+            </div>
+          </form>
+        </div>
+      )}
 
-          <div className={canReport ? "lg:col-span-2" : ""}>
-            <div className="bg-console-panel border border-console-border rounded-lg p-6">
-              <h3 className="font-display font-semibold text-console-text text-sm mb-4 uppercase tracking-wide">
-                Active Incidents ({incidents.length})
-              </h3>
+      {/* Incident List */}
+      <div className="bg-console-panel border border-console-border rounded-lg p-5">
+        <div className="flex items-center justify-between mb-4">
+          <h2 className="text-sm font-display font-semibold text-console-text uppercase tracking-wider">
+            Reported Incidents
+          </h2>
+          <label className="flex items-center gap-2 text-xs font-mono text-console-muted cursor-pointer">
+            <input
+              type="checkbox"
+              checked={activeOnly}
+              onChange={(e) => setActiveOnly(e.target.checked)}
+              className="rounded border-console-border bg-console-bg"
+            />
+            Active Only
+          </label>
+        </div>
 
-              {incidentsLoading ? (
-                <div className="space-y-3">
-                  {Array.from({ length: 3 }).map((_, i) => (
-                    <SkeletonIncidentRow key={i} />
-                  ))}
-                </div>
-              ) : incidents.length === 0 ? (
-                <p className="text-console-muted text-sm font-body py-6 text-center">
-                  No active incidents reported right now.
-                </p>
-              ) : (
-                <div className="space-y-3">
-                  {incidents.map((inc) => (
-                    <div
-                      key={inc.id}
-                      className="p-3 rounded border border-console-border flex items-start justify-between gap-3"
-                    >
-                      <div>
-                        <div className="flex items-center gap-2 mb-1">
-                          <span
-                            className={`px-2 py-0.5 rounded text-[10px] font-mono uppercase tracking-wide border ${SEVERITY_STYLES[inc.severity]}`}
-                          >
-                            {inc.severity}
-                          </span>
-                          <span className="text-console-text text-sm font-body font-medium">
-                            {INCIDENT_TYPES.find((t) => t.value === inc.incident_type)?.label || inc.incident_type}
-                          </span>
-                        </div>
-                        <p className="text-console-muted text-xs font-mono">{inc.zone_name}</p>
-                        {inc.description && (
-                          <p className="text-console-text text-xs font-body mt-1">{inc.description}</p>
-                        )}
-                        <p className="text-console-muted text-[10px] font-mono mt-1">
-                          Reported {new Date(inc.created_at).toLocaleString()}
-                        </p>
-                      </div>
-                      {canReport && (
-                        <button
-                          onClick={() => handleResolve(inc.id)}
-                          className="shrink-0 text-[10px] font-mono uppercase tracking-wide text-signal-low hover:underline"
-                        >
-                          Mark Resolved
-                        </button>
+        {loading ? (
+          <p className="text-xs font-mono text-console-muted py-6 text-center">
+            Loading incidents...
+          </p>
+        ) : incidents.length === 0 ? (
+          <p className="text-xs font-mono text-console-muted py-6 text-center">
+            No incidents reported.
+          </p>
+        ) : (
+          <div className="space-y-3">
+            {incidents.map((inc) => {
+              const isResolved = Boolean(inc.is_resolved);
+              const severityKey = (inc.severity || "minor").toLowerCase();
+
+              return (
+                <div
+                  key={inc.id}
+                  className={`p-4 rounded-lg border transition flex flex-col md:flex-row md:items-center justify-between gap-4 ${
+                    isResolved
+                      ? "bg-console-bg/30 border-console-border opacity-60"
+                      : "bg-console-bg border-console-border"
+                  }`}
+                >
+                  <div className="space-y-1.5 flex-1 min-w-0">
+                    <div className="flex items-center gap-2 flex-wrap">
+                      <span className="text-xs font-semibold text-console-text font-display">
+                        {inc.incident_type?.replace("_", " ").toUpperCase()}
+                      </span>
+                      <span className="text-xs text-console-muted">&middot;</span>
+                      <span className="text-xs text-console-muted font-body">
+                        {inc.zone_name || `Zone #${inc.zone_id}`}
+                      </span>
+
+                      <span
+                        className={`text-[10px] font-mono uppercase px-2 py-0.5 rounded border ${
+                          SEVERITY_BADGE[severityKey] || "border-console-border"
+                        }`}
+                      >
+                        {inc.severity}
+                      </span>
+
+                      {isResolved && (
+                        <span className="text-[10px] font-mono uppercase px-2 py-0.5 rounded border border-console-border bg-white/5 text-console-muted">
+                          Resolved
+                        </span>
                       )}
                     </div>
-                  ))}
-                </div>
-              )}
-            </div>
-          </div>
-        </div>
-      </div>
-    </div>
-  );
-}
 
-function SkeletonIncidentRow() {
-  return (
-    <div className="p-3 rounded border border-console-border flex items-start justify-between gap-3">
-      <div className="flex-1">
-        <div className="flex items-center gap-2 mb-2">
-          <Skeleton className="h-4 w-14" />
-          <Skeleton className="h-4 w-28" />
-        </div>
-        <Skeleton className="h-3 w-20 mb-1.5" />
-        <Skeleton className="h-2.5 w-32" />
+                    {inc.description && (
+                      <p className="text-xs text-console-text font-body">
+                        {inc.description}
+                      </p>
+                    )}
+
+                    <div className="text-[10px] font-mono text-console-muted">
+                      Reported: {new Date(inc.created_at).toLocaleString()}
+                    </div>
+                  </div>
+
+                  {canReport && (
+                    <div className="flex items-center gap-2 shrink-0">
+                      <button
+                        onClick={() => handleResolve(inc.id, isResolved)}
+                        className={`px-3 py-1.5 rounded font-mono text-xs border transition ${
+                          isResolved
+                            ? "border-console-border text-console-muted hover:text-console-text"
+                            : "border-signal-severe/40 text-signal-severe hover:bg-signal-severe/10"
+                        }`}
+                      >
+                        {isResolved ? "Reopen" : "Mark Resolved"}
+                      </button>
+                    </div>
+                  )}
+                </div>
+              );
+            })}
+          </div>
+        )}
       </div>
-      <Skeleton className="h-3 w-16 shrink-0" />
     </div>
   );
 }

@@ -80,7 +80,7 @@ def resolve_incident(
     db.commit()
     db.refresh(incident)
 
-    incident.zone_name = incident.zone.name if getattr(incident, "zone", None) else f"Zone #{incident.zone_id}"
+    incident.zone_name = incident.zone.name if getattr(inc, "zone", None) else f"Zone #{incident.zone_id}"
     incident.is_resolved = bool(incident.is_resolved)
 
     return incident
