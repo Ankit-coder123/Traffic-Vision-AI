@@ -68,11 +68,9 @@ export const routesApi = {
 };
 
 export const incidentsApi = {
-  list: (activeOnly = false) =>
-    client.get(`/incidents${activeOnly ? "?active_only=true" : ""}`),
-  create: (data) => client.post("/incidents", data),
-  resolve: (id, isResolved = true) =>
-    client.patch(`/incidents/${id}/resolve`, { is_resolved: isResolved }),
+  report: (payload) => client.post("/incidents", payload),
+  list: (activeOnly = true) => client.get(`/incidents?active_only=${activeOnly}`),
+  resolve: (id) => client.patch(`/incidents/${id}/resolve`, { is_resolved: true }),
 };
 
 export const analyticsApi = {

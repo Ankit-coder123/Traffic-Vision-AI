@@ -60,6 +60,14 @@ class TrafficZone(Base):
 
 class TrafficData(Base):
     __tablename__ = "traffic_data"
+    # The single hottest query pattern in the whole app is "most recent N
+    # readings for this zone" (analytics.py's recommendations/heatmap/trends,
+    # traffic.py's zone history) -- a single column index on recorded_at
+    # can't serve that efficiently, since Postgres still has to walk rows
+    # in date order and filter zone_id afterward. Confirmed with a real
+    # EXPLAIN ANALYZE: "Rows Removed by Filter: 360" out of 400 total rows
+    # (see README's Performance Metrics section). A composite index lets
+    # Postgres jump straight to this zone's rows, already sorted.
     __table_args__ = (Index("ix_traffic_data_zone_recorded", "zone_id", "recorded_at"),)
 
     id = Column(Integer, primary_key=True, index=True)
@@ -101,8 +109,7 @@ class IncidentReport(Base):
     severity = Column(Enum(IncidentSeverity), nullable=False)
     description = Column(String, nullable=True)
     reported_by_user_id = Column(Integer, ForeignKey("users.id"), nullable=False)
-    is_resolved = Column(Integer, default=0, index=True)  # 0/1 boolean flag
-    is_verified = Column(Integer, default=0, index=True)  # 0/1 verification flag (1 = verified by admin)
+    is_resolved = Column(Integer, default=0, index=True)  # 0/1 boolean flag (portable across SQLite/Postgres) -- filtered on constantly (get_recommendations, GET /incidents ?active_only)
     created_at = Column(DateTime, default=datetime.utcnow, index=True)
 
     zone = relationship("TrafficZone")
@@ -110,7 +117,11 @@ class IncidentReport(Base):
 
 class AlertDismissal(Base):
     """Tracks operator/admin dismissals of auto-generated 'persistent
-    congestion' recommendations (see analytics.get_recommendations)."""
+    congestion' recommendations (see analytics.get_recommendations). These
+    recommendations are computed live from recent TrafficData readings
+    rather than stored as rows themselves, so there's nothing to mark
+    resolved directly -- instead we record a cooldown window per zone and
+    suppress the recommendation for that zone until it expires."""
     __tablename__ = "alert_dismissals"
 
     id = Column(Integer, primary_key=True, index=True)
@@ -123,7 +134,17 @@ class AlertDismissal(Base):
 
 
 class PasswordResetToken(Base):
-    """A single-use, short-lived token for the 'forgot password' flow."""
+    """A single-use, short-lived token for the 'forgot password' flow.
+
+    Kept as its own table rather than columns on User, for the same reason
+    given in auth.py's docstring: create_all() can't alter an
+    already-existing table, but it happily creates a brand new one. We
+    store a SHA-256 hash of the token (not the raw token, and not run
+    through bcrypt -- the token itself already has 256 bits of entropy
+    from secrets.token_urlsafe, so a slow password-hashing algorithm buys
+    nothing here and would just slow down every reset-link click). The raw
+    token only ever exists in the emailed link and briefly in memory.
+    """
     __tablename__ = "password_reset_tokens"
 
     id = Column(Integer, primary_key=True, index=True)
@@ -137,15 +158,18 @@ class PasswordResetToken(Base):
 
 
 class SavedRoute(Base):
-    """A user's personally saved origin/destination pair for quick re-use."""
+    """A user's personally saved origin/destination pair for quick re-use
+    on the Routes page -- available to every role, but framed as primarily
+    a convenience feature for regular public users."""
     __tablename__ = "saved_routes"
 
     id = Column(Integer, primary_key=True, index=True)
-    user_id = Column(Integer, ForeignKey("users.id"), nullable=False, index=True)
-    label = Column(String, nullable=False)
+    user_id = Column(Integer, ForeignKey("users.id"), nullable=False, index=True)  # GET /routes/saved always filters by current user
+    label = Column(String, nullable=False)  # e.g. "Home to Office"
     origin_zone_id = Column(Integer, ForeignKey("traffic_zones.id"), nullable=False)
     destination_zone_id = Column(Integer, ForeignKey("traffic_zones.id"), nullable=False)
     created_at = Column(DateTime, default=datetime.utcnow)
 
     origin_zone = relationship("TrafficZone", foreign_keys=[origin_zone_id])
     destination_zone = relationship("TrafficZone", foreign_keys=[destination_zone_id])
+
