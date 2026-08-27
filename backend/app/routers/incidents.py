@@ -36,6 +36,7 @@ def report_incident(
     db.refresh(incident)
 
     incident.zone_name = zone.name
+    incident.is_resolved = bool(incident.is_resolved)
     return incident
 
 
