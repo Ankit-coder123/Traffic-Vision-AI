@@ -1,4 +1,4 @@
-import { useEffect, useState, useCallback } from "react";
+import { useEffect, useState } from "react";
 import { incidentsApi, trafficApi } from "../api/client";
 import { useAuth } from "../context/AuthContext";
 
@@ -31,7 +31,6 @@ export default function Incidents() {
   const [loading, setLoading] = useState(true);
   const [activeOnly, setActiveOnly] = useState(false);
   const [submitting, setSubmitting] = useState(false);
-  const [resolvingId, setResolvingId] = useState(null);
   const [error, setError] = useState(null);
 
   const [form, setForm] = useState({
@@ -41,7 +40,7 @@ export default function Incidents() {
     description: "",
   });
 
-  const loadData = useCallback(async () => {
+  const loadData = async () => {
     try {
       const [incRes, zoneRes] = await Promise.all([
         incidentsApi.list(activeOnly),
@@ -55,11 +54,11 @@ export default function Incidents() {
     } finally {
       setLoading(false);
     }
-  }, [activeOnly]);
+  };
 
   useEffect(() => {
     loadData();
-  }, [loadData]);
+  }, [activeOnly]);
 
   const handleSubmit = async (e) => {
     e.preventDefault();
@@ -88,14 +87,11 @@ export default function Incidents() {
   };
 
   const handleResolve = async (id, currentResolvedState) => {
-    setResolvingId(id);
     try {
       await incidentsApi.resolve(id, !currentResolvedState);
       await loadData();
     } catch (err) {
       alert(err.response?.data?.detail || "Failed to update incident status");
-    } finally {
-      setResolvingId(null);
     }
   };
 
@@ -103,17 +99,17 @@ export default function Incidents() {
     <div className="space-y-6">
       <div>
         <h1 className="text-2xl font-display font-bold text-console-text">
-          Incident Management
+          Incidents
         </h1>
         <p className="text-xs text-console-muted font-mono mt-1">
-          Log and track live traffic incidents across monitoring zones.
+          Report and track traffic disruptions across monitoring zones.
         </p>
       </div>
 
       {canReport && (
         <div className="bg-console-panel border border-console-border rounded-lg p-5">
           <h2 className="text-sm font-display font-semibold text-console-text mb-4 uppercase tracking-wider">
-            Report New Incident
+            Report Incident
           </h2>
           {error && (
             <div className="mb-4 p-3 rounded bg-signal-severe/10 border border-signal-severe/30 text-xs text-signal-severe">
@@ -142,7 +138,7 @@ export default function Incidents() {
 
             <div>
               <label className="block text-xs font-mono text-console-muted mb-1">
-                Incident Type
+                Type
               </label>
               <select
                 value={form.incident_type}
@@ -180,20 +176,20 @@ export default function Incidents() {
               </label>
               <input
                 type="text"
-                placeholder="e.g. 2-car collision blocking right lane"
+                placeholder="e.g. 2-car collision"
                 value={form.description}
                 onChange={(e) => setForm({ ...form, description: e.target.value })}
                 className="w-full bg-console-bg border border-console-border rounded px-3 py-2 text-xs text-console-text focus:outline-none focus:border-accent"
               />
             </div>
 
-            <div className="md:col-span-4 flex justify-end pt-2">
+            <div className="md:col-span-4 flex justify-end">
               <button
                 type="submit"
                 disabled={submitting}
                 className="px-5 py-2 rounded bg-accent text-white font-mono text-xs font-semibold hover:bg-accent/80 transition disabled:opacity-50"
               >
-                {submitting ? "Logging..." : "Submit Incident Report"}
+                {submitting ? "Reporting..." : "Report Incident"}
               </button>
             </div>
           </form>
@@ -204,7 +200,7 @@ export default function Incidents() {
       <div className="bg-console-panel border border-console-border rounded-lg p-5">
         <div className="flex items-center justify-between mb-4">
           <h2 className="text-sm font-display font-semibold text-console-text uppercase tracking-wider">
-            Incident Log
+            Reported Incidents
           </h2>
           <label className="flex items-center gap-2 text-xs font-mono text-console-muted cursor-pointer">
             <input
@@ -223,7 +219,7 @@ export default function Incidents() {
           </p>
         ) : incidents.length === 0 ? (
           <p className="text-xs font-mono text-console-muted py-6 text-center">
-            No incidents found.
+            No incidents reported.
           </p>
         ) : (
           <div className="space-y-3">
@@ -280,18 +276,13 @@ export default function Incidents() {
                     <div className="flex items-center gap-2 shrink-0">
                       <button
                         onClick={() => handleResolve(inc.id, isResolved)}
-                        disabled={resolvingId === inc.id}
-                        className={`px-3 py-1.5 rounded font-mono text-xs border transition disabled:opacity-50 ${
+                        className={`px-3 py-1.5 rounded font-mono text-xs border transition ${
                           isResolved
                             ? "border-console-border text-console-muted hover:text-console-text"
                             : "border-signal-severe/40 text-signal-severe hover:bg-signal-severe/10"
                         }`}
                       >
-                        {resolvingId === inc.id
-                          ? "Updating..."
-                          : isResolved
-                          ? "Reopen"
-                          : "Mark Resolved"}
+                        {isResolved ? "Reopen" : "Mark Resolved"}
                       </button>
                     </div>
                   )}
