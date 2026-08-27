@@ -26,12 +26,12 @@ class UserOut(BaseModel):
     created_at: datetime
 
     class Config:
-        from_attributes = True   # allows returning SQLAlchemy objects directly
+        from_attributes = True
 
 
 class ProfileUpdate(BaseModel):
     name: Optional[str] = None
-    current_password: Optional[str] = None   # required only if setting new_password
+    current_password: Optional[str] = None
     new_password: Optional[str] = None
 
 
@@ -41,7 +41,7 @@ class Token(BaseModel):
 
 
 class GoogleAuthRequest(BaseModel):
-    credential: str   # the ID token JWT returned by Google Identity Services
+    credential: str
 
 
 class ForgotPasswordRequest(BaseModel):
@@ -107,8 +107,8 @@ class CongestionPredictionRequest(BaseModel):
     avg_speed_kmph: float
     road_occupancy_pct: float
     weather_condition: Optional[str] = "Clear"   # 'Clear' | 'Fog' | 'Rain' | 'Snow'
-    hour: Optional[int] = None                  # 0-23; defaults to current server hour if omitted
-    is_weekend: Optional[bool] = None            # defaults based on current server date if omitted
+    hour: Optional[int] = None                  # 0-23
+    is_weekend: Optional[bool] = None
 
 
 class CongestionPredictionResponse(BaseModel):
@@ -138,8 +138,6 @@ class TrafficPredictionOut(BaseModel):
 # ---------- Route Optimization ----------
 
 class RouteRequest(BaseModel):
-    # Either pick existing zones (uses their stored lat/lng) or supply raw
-    # coordinates directly -- zone_id takes priority if both are given.
     origin_zone_id: Optional[int] = None
     destination_zone_id: Optional[int] = None
     origin_lat: Optional[float] = None
@@ -150,17 +148,17 @@ class RouteRequest(BaseModel):
 
 class RouteOption(BaseModel):
     distance_km: float
-    base_duration_min: float                  # raw OSRM estimate, no congestion factored in
-    congestion_multiplier: float                # derived from current live traffic data
-    estimated_duration_min: float                # base_duration_min * congestion_multiplier
-    geometry: list                              # list of [lat, lng] points for map rendering
+    base_duration_min: float
+    congestion_multiplier: float
+    estimated_duration_min: float
+    geometry: list
     is_recommended: bool = False
 
 
 class RouteOptimizeResponse(BaseModel):
-    origin: dict                            # {"lat":..., "lng":...}
+    origin: dict
     destination: dict
-    congestion_level_used: str                 # what congestion level informed the multiplier
+    congestion_level_used: str
     routes: list[RouteOption]
     incident_warnings: list[str] = []
 
@@ -170,7 +168,7 @@ class RouteOptimizeResponse(BaseModel):
 class IncidentReportCreate(BaseModel):
     zone_id: int
     incident_type: str   # accident | road_closure | construction | hazard | other
-    severity: str          # minor | moderate | major
+    severity: str        # minor | moderate | major
     description: Optional[str] = None
 
 
@@ -180,11 +178,10 @@ class IncidentReportOut(BaseModel):
     zone_name: Optional[str] = None
     incident_type: str
     severity: str
-    description: Optional[str]
+    description: Optional[str] = None
     reported_by_user_id: int
     is_resolved: bool
-    is_verified: bool   # 0/1 or False/True flag indicating Admin verification
-    created_at: datetime
+    created_at: Optional[datetime] = None
 
     class Config:
         from_attributes = True
@@ -192,10 +189,6 @@ class IncidentReportOut(BaseModel):
 
 class IncidentResolveRequest(BaseModel):
     is_resolved: bool = True
-
-
-class IncidentVerifyRequest(BaseModel):
-    is_verified: bool = True
 
 
 # ---------- Saved Routes (any authenticated user) ----------
@@ -219,14 +212,14 @@ class SavedRouteOut(BaseModel):
         from_attributes = True
 
 
-# ---------- Analytics (Milestone 3) ----------
+# ---------- Analytics ----------
 
 class DashboardSummary(BaseModel):
     total_zones: int
     active_incidents: int
     total_predictions_24h: int
-    congestion_distribution: dict                  # {"low": 5, "medium": 10, "high": 7}
-    busiest_zone: Optional[str] = None               # zone with most 'high' readings recently
+    congestion_distribution: dict
+    busiest_zone: Optional[str] = None
     city_avg_speed_kmph: Optional[float] = None
 
 
@@ -235,7 +228,7 @@ class HeatmapPoint(BaseModel):
     zone_name: str
     latitude: float
     longitude: float
-    congestion_level: str                # most recent reading's level
+    congestion_level: str
     vehicle_count: Optional[int] = None
 
 
@@ -243,28 +236,28 @@ class RoadConditionOut(BaseModel):
     zone_id: int
     zone_name: str
     road_type: str
-    status: str                               # 'normal' | 'congested' | 'impaired' | 'closed'
-    congestion_level: Optional[str]           # most recent reading's level, if any
+    status: str
+    congestion_level: Optional[str] = None
     active_incident_type: Optional[str] = None
     active_incident_severity: Optional[str] = None
     last_updated: Optional[datetime] = None
 
 
 class RoadPerformance(BaseModel):
-    road_type: str                            # 'highway' | 'arterial' | 'local'
-    zone_count: int                           # how many zones of this road type
-    reading_count: int                        # how many recent readings this is based on
+    road_type: str
+    zone_count: int
+    reading_count: int
     avg_speed_kmph: float
     avg_vehicle_count: float
-    avg_congestion_score: float               # 0=low .. 3=severe
-    worst_zone: Optional[str] = None          # zone with the most 'high'/'severe' readings in this group
+    avg_congestion_score: float
+    worst_zone: Optional[str] = None
 
 
 class TrendPoint(BaseModel):
-    period: str                            # e.g. "2026-07-28 14:00" (hourly bucket)
+    period: str
     avg_vehicle_count: float
     avg_speed_kmph: float
-    congestion_score: float                   # numeric encoding of avg congestion (0=low .. 3=severe)
+    congestion_score: float
 
 
 class ZoneTrend(BaseModel):
@@ -278,8 +271,8 @@ class RecommendationOut(BaseModel):
     zone_name: Optional[str]
     title: str
     message: str
-    severity: str   # 'info' | 'warning' | 'critical'
-    source: str     # 'congestion' | 'incident'
+    severity: str
+    source: str
 
 
 class AlertDismissalOut(BaseModel):
@@ -289,14 +282,14 @@ class AlertDismissalOut(BaseModel):
 
 
 class HourlyPatternPoint(BaseModel):
-    hour: int                              # 0-23
-    avg_congestion_score: float           # 0 (low) - 3 (severe)
+    hour: int
+    avg_congestion_score: float
     sample_count: int
-    is_peak: bool                          # True if this hour is among the top peak hours
+    is_peak: bool
 
 
 class DailyPatternPoint(BaseModel):
-    day_of_week: int                       # 0=Monday ... 6=Sunday (Python's datetime.weekday() convention)
+    day_of_week: int
     day_name: str
     avg_congestion_score: float
     sample_count: int
@@ -310,6 +303,6 @@ class PeakHourAnalysisOut(BaseModel):
     total_readings_analyzed: int
     hourly_pattern: List[HourlyPatternPoint]
     daily_pattern: List[DailyPatternPoint]
-    peak_hours: List[int]                  # the actual hour numbers flagged as peak
-    peak_days: List[str]                   # the actual day names flagged as peak
-    summary: str                           # plain-language takeaway
+    peak_hours: List[int]
+    peak_days: List[str]
+    summary: str
