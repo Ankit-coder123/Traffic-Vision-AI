@@ -69,12 +69,13 @@ export const routesApi = {
 
 export const incidentsApi = {
   list: (activeOnly = false) =>
-    api.get(`/incidents${activeOnly ? "?active_only=true" : ""}`),
-  create: (data) => api.post("/incidents", data),
+    client.get(`/incidents${activeOnly ? "?active_only=true" : ""}`),
+  create: (data) => client.post("/incidents", data),
   resolve: (id, isResolved = true) =>
-    api.patch(`/incidents/${id}/resolve`, { is_resolved: isResolved }),
-  verify: (id) => api.patch(`/incidents/${id}/verify`), // <-- Add this method
+    client.patch(`/incidents/${id}/resolve`, { is_resolved: isResolved }),
+  verify: (id) => client.patch(`/incidents/${id}/verify`),
 };
+
 export const analyticsApi = {
   getSummary: () => client.get("/analytics/summary"),
   getHeatmap: () => client.get("/analytics/heatmap"),
