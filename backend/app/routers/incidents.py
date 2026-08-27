@@ -65,6 +65,8 @@ def report_incident(
     db.commit()
     db.refresh(incident)
 
+    incident.zone_name = zone.name
+
     # Trigger instant broadcast only if reported directly by an Admin
     if is_admin:
         _broadcast_incident_alert(db, background_tasks, incident, zone.name)
@@ -93,7 +95,9 @@ def verify_incident(
     db.commit()
     db.refresh(incident)
 
-    zone_name = incident.zone.name if incident.zone else f"Zone #{incident.zone_id}"
+    zone_name = incident.zone.name if getattr(incident, "zone", None) else f"Zone #{incident.zone_id}"
+    incident.zone_name = zone_name
+
     _broadcast_incident_alert(db, background_tasks, incident, zone_name)
 
     return incident
@@ -114,9 +118,11 @@ def list_incidents(
 
     incidents = query.order_by(models.IncidentReport.created_at.desc()).all()
 
-    # Populate zone_name virtual property for serialization
+    # Safely attach zone_name and boolean states
     for inc in incidents:
-        inc.zone_name = inc.zone.name if inc.zone else f"Zone #{inc.zone_id}"
+        inc.zone_name = inc.zone.name if getattr(inc, "zone", None) else f"Zone #{inc.zone_id}"
+        inc.is_resolved = bool(inc.is_resolved)
+        inc.is_verified = bool(getattr(inc, "is_verified", 0))
 
     return incidents
 
@@ -139,5 +145,8 @@ def resolve_incident(
     db.commit()
     db.refresh(incident)
 
-    incident.zone_name = incident.zone.name if incident.zone else f"Zone #{incident.zone_id}"
+    incident.zone_name = incident.zone.name if getattr(incident, "zone", None) else f"Zone #{incident.zone_id}"
+    incident.is_resolved = bool(incident.is_resolved)
+    incident.is_verified = bool(getattr(incident, "is_verified", 0))
+
     return incident
