@@ -1,11 +1,12 @@
 from datetime import datetime
 from typing import List, Optional
 
-from fastapi import APIRouter, Depends, HTTPException, status
+from fastapi import APIRouter, BackgroundTasks, Depends, HTTPException, status
 from sqlalchemy.orm import Session
 
 from app import models, schemas, security
 from app.database import get_db
+from app.email_utils import send_incident_alert_email
 
 router = APIRouter(prefix="/incidents", tags=["Incident Reporting"])
 
@@ -13,11 +14,13 @@ router = APIRouter(prefix="/incidents", tags=["Incident Reporting"])
 @router.post("", response_model=schemas.IncidentReportOut, status_code=status.HTTP_201_CREATED)
 def report_incident(
     payload: schemas.IncidentReportCreate,
+    background_tasks: BackgroundTasks,
     db: Session = Depends(get_db),
     current_user: models.User = Depends(security.require_operator_or_admin),
 ):
     """
     Report a new traffic incident (operator or admin).
+    Feeds the real-time alerts system and persists the report.
     """
     zone = db.query(models.TrafficZone).filter(models.TrafficZone.id == payload.zone_id).first()
     if not zone:
@@ -35,8 +38,19 @@ def report_incident(
     db.commit()
     db.refresh(incident)
 
+    # Optional email alert broadcast to the reporter (or operator list)
+    recipient_emails = [current_user.email] if current_user.email else []
+    if recipient_emails:
+        background_tasks.add_task(
+            send_incident_alert_email,
+            recipient_emails=recipient_emails,
+            zone_name=zone.name,
+            incident_type=str(payload.incident_type),
+            severity=str(payload.severity),
+            description=payload.description,
+        )
+
     incident.zone_name = zone.name
-    incident.is_resolved = bool(incident.is_resolved)
     return incident
 
 
@@ -47,7 +61,8 @@ def list_incidents(
     current_user: models.User = Depends(security.get_current_user),
 ):
     """
-    List incident reports.
+    List incident reports. Any authenticated user can view them.
+    Optional query param ?active_only=true returns only unresolved incidents.
     """
     query = db.query(models.IncidentReport)
     if active_only:
@@ -56,8 +71,7 @@ def list_incidents(
     incidents = query.order_by(models.IncidentReport.created_at.desc()).all()
 
     for inc in incidents:
-        inc.zone_name = inc.zone.name if getattr(inc, "zone", None) else f"Zone #{inc.zone_id}"
-        inc.is_resolved = bool(inc.is_resolved)
+        inc.zone_name = inc.zone.name if inc.zone else f"Zone #{inc.zone_id}"
 
     return incidents
 
@@ -70,7 +84,8 @@ def resolve_incident(
     current_user: models.User = Depends(security.require_operator_or_admin),
 ):
     """
-    Mark an active incident report as resolved.
+    Mark an active incident report as resolved (or reopen it).
+    Operator or admin only.
     """
     incident = db.query(models.IncidentReport).filter(models.IncidentReport.id == incident_id).first()
     if not incident:
@@ -80,7 +95,5 @@ def resolve_incident(
     db.commit()
     db.refresh(incident)
 
-    incident.zone_name = incident.zone.name if getattr(inc, "zone", None) else f"Zone #{incident.zone_id}"
-    incident.is_resolved = bool(incident.is_resolved)
-
+    incident.zone_name = incident.zone.name if incident.zone else f"Zone #{incident.zone_id}"
     return incident
