@@ -24,7 +24,6 @@ const SEVERITY_BADGE = {
 
 export default function Incidents() {
   const { user } = useAuth();
-  const isAdmin = user?.role === "admin";
   const canReport = user?.role === "admin" || user?.role === "operator";
 
   const [incidents, setIncidents] = useState([]);
@@ -32,7 +31,6 @@ export default function Incidents() {
   const [loading, setLoading] = useState(true);
   const [activeOnly, setActiveOnly] = useState(false);
   const [submitting, setSubmitting] = useState(false);
-  const [verifyingId, setVerifyingId] = useState(null);
   const [resolvingId, setResolvingId] = useState(null);
   const [error, setError] = useState(null);
 
@@ -47,7 +45,7 @@ export default function Incidents() {
     try {
       const [incRes, zoneRes] = await Promise.all([
         incidentsApi.list(activeOnly),
-        trafficApi.getZones(),
+        trafficApi.listZones(),
       ]);
       setIncidents(incRes.data || []);
       setZones(zoneRes.data || []);
@@ -89,18 +87,6 @@ export default function Incidents() {
     }
   };
 
-  const handleVerify = async (id) => {
-    setVerifyingId(id);
-    try {
-      await incidentsApi.verify(id);
-      await loadData();
-    } catch (err) {
-      alert(err.response?.data?.detail || "Failed to verify incident");
-    } finally {
-      setVerifyingId(null);
-    }
-  };
-
   const handleResolve = async (id, currentResolvedState) => {
     setResolvingId(id);
     try {
@@ -120,7 +106,7 @@ export default function Incidents() {
           Incident Management
         </h1>
         <p className="text-xs text-console-muted font-mono mt-1">
-          Real-time incident logging, admin approval workflow, and email broadcast.
+          Log and track live traffic incidents across monitoring zones.
         </p>
       </div>
 
@@ -201,12 +187,7 @@ export default function Incidents() {
               />
             </div>
 
-            <div className="md:col-span-4 flex items-center justify-between pt-2">
-              <p className="text-[11px] font-mono text-console-muted">
-                {isAdmin
-                  ? "✓ Admin Mode: Incident will auto-verify and broadcast email alerts immediately."
-                  : "⚠ Operator Mode: Incident will be logged and submitted for Admin verification before broadcast."}
-              </p>
+            <div className="md:col-span-4 flex justify-end pt-2">
               <button
                 type="submit"
                 disabled={submitting}
@@ -248,7 +229,7 @@ export default function Incidents() {
           <div className="space-y-3">
             {incidents.map((inc) => {
               const isResolved = Boolean(inc.is_resolved);
-              const isVerified = Boolean(inc.is_verified);
+              const severityKey = (inc.severity || "minor").toLowerCase();
 
               return (
                 <div
@@ -271,22 +252,11 @@ export default function Incidents() {
 
                       <span
                         className={`text-[10px] font-mono uppercase px-2 py-0.5 rounded border ${
-                          SEVERITY_BADGE[inc.severity] || "border-console-border"
+                          SEVERITY_BADGE[severityKey] || "border-console-border"
                         }`}
                       >
                         {inc.severity}
                       </span>
-
-                      {/* Verification Status Badge */}
-                      {isVerified ? (
-                        <span className="text-[10px] font-mono uppercase px-2 py-0.5 rounded border border-signal-low/40 bg-signal-low/10 text-signal-low">
-                          ✓ Verified & Alerted
-                        </span>
-                      ) : (
-                        <span className="text-[10px] font-mono uppercase px-2 py-0.5 rounded border border-signal-medium/40 bg-signal-medium/10 text-signal-medium">
-                          ⏳ Pending Admin Review
-                        </span>
-                      )}
 
                       {isResolved && (
                         <span className="text-[10px] font-mono uppercase px-2 py-0.5 rounded border border-console-border bg-white/5 text-console-muted">
@@ -306,20 +276,8 @@ export default function Incidents() {
                     </div>
                   </div>
 
-                  <div className="flex items-center gap-2 shrink-0">
-                    {/* Admin Verification Action */}
-                    {isAdmin && !isVerified && !isResolved && (
-                      <button
-                        onClick={() => handleVerify(inc.id)}
-                        disabled={verifyingId === inc.id}
-                        className="px-3 py-1.5 rounded bg-accent text-white font-mono text-xs font-semibold hover:bg-accent/80 transition disabled:opacity-50"
-                      >
-                        {verifyingId === inc.id ? "Approving..." : "Approve & Send Alert"}
-                      </button>
-                    )}
-
-                    {/* Resolve Toggle for Operators/Admins */}
-                    {canReport && (
+                  {canReport && (
+                    <div className="flex items-center gap-2 shrink-0">
                       <button
                         onClick={() => handleResolve(inc.id, isResolved)}
                         disabled={resolvingId === inc.id}
@@ -335,8 +293,8 @@ export default function Incidents() {
                           ? "Reopen"
                           : "Mark Resolved"}
                       </button>
-                    )}
-                  </div>
+                    </div>
+                  )}
                 </div>
               );
             })}

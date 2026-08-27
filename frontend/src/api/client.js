@@ -73,7 +73,6 @@ export const incidentsApi = {
   create: (data) => client.post("/incidents", data),
   resolve: (id, isResolved = true) =>
     client.patch(`/incidents/${id}/resolve`, { is_resolved: isResolved }),
-  verify: (id) => client.patch(`/incidents/${id}/verify`),
 };
 
 export const analyticsApi = {
