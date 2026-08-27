@@ -1,24 +1,16 @@
 import { useEffect, useState, useCallback } from "react";
-import { trafficApi, analyticsApi } from "../api/client";
+import { trafficApi } from "../api/client";
 import ZoneCard from "../components/ZoneCard";
 import NavBar from "../components/NavBar";
 import { Skeleton } from "../components/Skeleton";
 
 const POLL_INTERVAL_MS = 5000;
 
-// const STATUS_STYLES = {
-//   closed: "bg-signal-severe/10 text-signal-severe border-signal-severe/30",
-//   impaired: "bg-signal-high/10 text-signal-high border-signal-high/30",
-//   congested: "bg-signal-medium/10 text-signal-medium border-signal-medium/30",
-// };
-const STATUS_LABELS = { closed: "Closed", impaired: "Impaired", congested: "Congested" };
-
 export default function Dashboard() {
   const [zones, setZones] = useState([]);
   const [readingsByZone, setReadingsByZone] = useState({});
   const [error, setError] = useState("");
   const [lastSync, setLastSync] = useState(null);
-  const [roadConditions, setRoadConditions] = useState([]);
   const [loading, setLoading] = useState(true);
 
   const fetchData = useCallback(async () => {
@@ -42,7 +34,6 @@ export default function Dashboard() {
       );
     }
     setLoading(false);
-    analyticsApi.getRoadConditions().then((res) => setRoadConditions(res.data)).catch(() => {});
   }, []);
 
   useEffect(() => {
@@ -84,36 +75,6 @@ export default function Dashboard() {
         {error && (
           <div className="mb-6 px-4 py-3 rounded bg-signal-severe/10 border border-signal-severe/30 text-signal-severe text-sm font-body">
             {error}
-          </div>
-        )}
-
-        {/* Road Condition Monitoring -- only surfaces zones that need attention */}
-        {roadConditions.filter((r) => r.status !== "normal").length > 0 && (
-          <div className="mb-6 bg-console-panel border border-console-border rounded-lg p-4">
-            <h3 className="font-display font-semibold text-console-text text-xs uppercase tracking-wide mb-3">
-              Road Conditions Needing Attention
-            </h3>
-            <div className="flex flex-col gap-2">
-              {roadConditions
-                .filter((r) => r.status !== "normal")
-                .map((r) => (
-                  <div key={r.zone_id} className="flex items-center justify-between text-sm font-body">
-                    <span className="text-console-text">{r.zone_name}</span>
-                    <div className="flex items-center gap-2">
-                      {r.active_incident_type && (
-                        <span className="text-console-muted text-xs font-mono capitalize">
-                          {r.active_incident_type.replace("_", " ")}
-                        </span>
-                      )}
-                      <span
-                        className={`px-2 py-0.5 rounded text-[10px] font-mono uppercase tracking-wide border ${STATUS_STYLES[r.status]}`}
-                      >
-                        {STATUS_LABELS[r.status]}
-                      </span>
-                    </div>
-                  </div>
-                ))}
-            </div>
           </div>
         )}
 
