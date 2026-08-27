@@ -6,11 +6,11 @@ import { Skeleton } from "../components/Skeleton";
 
 const POLL_INTERVAL_MS = 5000;
 
-const STATUS_STYLES = {
-  closed: "bg-signal-severe/10 text-signal-severe border-signal-severe/30",
-  impaired: "bg-signal-high/10 text-signal-high border-signal-high/30",
-  congested: "bg-signal-medium/10 text-signal-medium border-signal-medium/30",
-};
+// const STATUS_STYLES = {
+//   closed: "bg-signal-severe/10 text-signal-severe border-signal-severe/30",
+//   impaired: "bg-signal-high/10 text-signal-high border-signal-high/30",
+//   congested: "bg-signal-medium/10 text-signal-medium border-signal-medium/30",
+// };
 const STATUS_LABELS = { closed: "Closed", impaired: "Impaired", congested: "Congested" };
 
 export default function Dashboard() {
