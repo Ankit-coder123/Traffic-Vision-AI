@@ -1,6 +1,9 @@
-from typing import List
+import math
+import random
+from datetime import datetime
+from typing import List, Optional
 
-from fastapi import APIRouter, Depends
+from fastapi import APIRouter, Depends, HTTPException, status
 from sqlalchemy.orm import Session
 
 from app import models, schemas, security
@@ -9,67 +12,83 @@ from app.database import get_db
 router = APIRouter(prefix="/traffic", tags=["Traffic Monitoring"])
 
 
-@router.post("/zones", response_model=schemas.TrafficZoneOut)
-def create_zone(
-    zone_in: schemas.TrafficZoneCreate,
-    db: Session = Depends(get_db),
-    current_user: models.User = Depends(security.require_admin),  # only admins add zones
-):
-    zone = models.TrafficZone(**zone_in.model_dump())
-    db.add(zone)
-    db.commit()
-    db.refresh(zone)
-    return zone
-
-
 @router.get("/zones", response_model=List[schemas.TrafficZoneOut])
-def list_zones(db: Session = Depends(get_db), current_user: models.User = Depends(security.get_current_user)):
-    return db.query(models.TrafficZone).all()
-
-
-@router.post("/data", response_model=schemas.TrafficDataOut, status_code=201)
-def ingest_traffic_data(
-    data_in: schemas.TrafficDataCreate,
+def list_zones(
     db: Session = Depends(get_db),
     current_user: models.User = Depends(security.get_current_user),
 ):
     """
-    Called by the simulator (or, in production, real sensor gateways) to
-    push a new traffic reading for a zone.
+    List all traffic monitoring zones.
     """
-    reading = models.TrafficData(**data_in.model_dump())
-    db.add(reading)
-    db.commit()
-    db.refresh(reading)
-    return reading
+    return db.query(models.TrafficZone).order_by(models.TrafficZone.id.asc()).all()
 
 
 @router.get("/live", response_model=List[schemas.TrafficDataOut])
-def get_live_traffic(db: Session = Depends(get_db), current_user: models.User = Depends(security.get_current_user)):
+def get_live_traffic(
+    db: Session = Depends(get_db),
+    current_user: models.User = Depends(security.get_current_user),
+):
     """
-    Returns the MOST RECENT traffic reading per zone — this is what the
-    live dashboard will poll every few seconds.
+    Returns simulated real-time traffic state for every zone.
+    Generates dynamic readings on each 5-second poll cycle based on
+    time-of-day curves and active road incidents.
     """
-    zones = db.query(models.TrafficZone).all()
-    latest_readings = []
+    zones = db.query(models.TrafficZone).order_by(models.TrafficZone.id.asc()).all()
+    if not zones:
+        return []
+
+    now = datetime.utcnow()
+    current_hour = now.hour
+
+    # Query any active (unresolved) incidents affecting zone conditions
+    active_incidents = db.query(models.IncidentReport).filter(models.IncidentReport.is_resolved == 0).all()
+    incident_map = {inc.zone_id: inc.severity for inc in active_incidents}
+
+    # Rush-hour wave (peaks at 9 AM and 6 PM)
+    morning_peak = math.exp(-((current_hour - 9) ** 2) / 8)
+    evening_peak = math.exp(-((current_hour - 18) ** 2) / 8)
+    time_factor = 0.35 + 0.65 * max(morning_peak, evening_peak)
+
+    readings = []
+
     for zone in zones:
-        latest = (
-            db.query(models.TrafficData)
-            .filter(models.TrafficData.zone_id == zone.id)
-            .order_by(models.TrafficData.recorded_at.desc())
-            .first()
+        # Base count + 5-second dynamic jitter
+        base_count = int(30 + 65 * time_factor)
+        noise = random.randint(-8, 8)
+        vehicle_count = max(10, min(140, base_count + noise))
+
+        # Dynamic speed calculation
+        base_speed = 62.0 - (vehicle_count * 0.35)
+        speed_noise = random.uniform(-3.5, 3.5)
+        avg_speed = max(12.0, min(75.0, round(base_speed + speed_noise, 1)))
+
+        # Adjust for active incidents in this zone
+        if zone.id in incident_map:
+            sev = str(incident_map[zone.id]).lower()
+            if "major" in sev:
+                avg_speed = max(8.0, round(avg_speed * 0.4, 1))
+                vehicle_count = min(150, vehicle_count + 35)
+            elif "moderate" in sev:
+                avg_speed = max(14.0, round(avg_speed * 0.65, 1))
+                vehicle_count = min(130, vehicle_count + 18)
+
+        # Categorize congestion status
+        if avg_speed < 22.0 or vehicle_count >= 85:
+            congestion_level = "severe" if avg_speed < 15.0 else "high"
+        elif avg_speed < 40.0 or vehicle_count >= 50:
+            congestion_level = "medium"
+        else:
+            congestion_level = "low"
+
+        readings.append(
+            schemas.TrafficDataOut(
+                id=zone.id,
+                zone_id=zone.id,
+                vehicle_count=vehicle_count,
+                avg_speed_kmph=avg_speed,
+                congestion_level=congestion_level,
+                recorded_at=now,
+            )
         )
-        if latest:
-            latest_readings.append(latest)
-    return latest_readings
 
-
-@router.get("/history/{zone_id}", response_model=List[schemas.TrafficDataOut])
-def get_zone_history(zone_id: int, db: Session = Depends(get_db), current_user: models.User = Depends(security.get_current_user)):
-    return (
-        db.query(models.TrafficData)
-        .filter(models.TrafficData.zone_id == zone_id)
-        .order_by(models.TrafficData.recorded_at.desc())
-        .limit(50)
-        .all()
-    )
+    return readings
